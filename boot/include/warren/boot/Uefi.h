@@ -1,3 +1,8 @@
+//
+// Created by Zack Shrout on 8/13/26.
+// Copyright (c) 2026 BunnySoft. All rights reserved.
+//
+
 #pragma once
 
 // This is the one deliberate containment boundary for the imported EDK2

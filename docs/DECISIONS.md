@@ -42,6 +42,19 @@ an ADR.
 ADRs are prospective when possible. If code exposes an undocumented foundational
 decision, record it immediately and label the discovered constraint honestly.
 
+## Accepted Records Are Deliberate History
+
+An accepted ADR is not edited to make later code or documentation convenient.
+Code, plans, and general documentation conform to the accepted decision. If new
+evidence requires a different architectural direction, discuss that change
+explicitly and record it through a new ADR that supersedes or narrows the old
+one.
+
+Even a grammatical, formatting, or apparently editorial change to an accepted
+ADR requires explicit discussion before editing. Clarification normally belongs
+in a subordinate specification or new ADR so the original decision record
+remains trustworthy. Silent retroactive cleanup is forbidden.
+
 ## Decision Index
 
 | ADR | Title | Status |

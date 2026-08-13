@@ -33,6 +33,10 @@ architecture validation milestone before graphical work dominates the system.
 - The kernel must not call UEFI boot services after ownership is transferred.
 - The boot path must provide, at minimum, the physical memory map, kernel image
   description, command line, console capability, and optional initial ramdisk.
+- The loader implements only the mechanisms needed to locate, validate, load,
+  and hand off Burrow. General storage abstractions, long-lived device policy,
+  and operating-system services do not grow inside the loader merely because
+  they are convenient during bring-up.
 - A QEMU convenience loader may exist, but Burrow must not depend on QEMU-only
   behavior outside the platform layer.
 
@@ -165,9 +169,15 @@ must not be crippled by pretending Warren already exists.
 ## 12. Scope Control
 
 - Only one roadmap phase is active at a time.
+- The main development path retains the last completed bootable vertical slice.
+  A foundational replacement is developed behind an interface or alongside the
+  working path until automated equivalence evidence permits the old path to be
+  removed.
 - Experiments outside that phase live on an explicit experimental path and do
   not define production interfaces.
 - A new subsystem needs an owner, purpose, dependency boundary, and exit test.
+- Generalization follows demonstrated variation. Supporting one format or
+  platform cleanly is preferable to partially supporting several in advance.
 - Capability gates are not waived because a later feature is more exciting.
 - Code volume, TODO count, and elapsed time are not completion criteria.
 
@@ -183,3 +193,5 @@ Before merging a foundational change, ask:
 5. What is the smallest test that proves the contract?
 6. Does the change help the current phase exit, or is it unbounded future work?
 7. If it is a shortcut, where is its removal gate documented?
+8. Does a refactor preserve the last proven end-to-end path until its
+   replacement demonstrates equivalent behavior?

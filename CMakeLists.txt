@@ -33,6 +33,7 @@ add_custom_target(WarrenPlanning SOURCES
     CMakePresets.json
     LICENSE
     docs/ARCHITECTURE.md
+    docs/BRANCHING.md
     docs/DECISIONS.md
     docs/DEVELOPMENT.md
     docs/FILESYSTEM.md
@@ -40,6 +41,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/ROADMAP.md
     docs/SELF_HOSTING.md
     docs/VISION.md
+    docs/plans/phase-0-contracts.md
     docs/adr/0000-template.md
     docs/adr/0001-reference-target.md
     docs/adr/0002-language-and-low-level-abi.md

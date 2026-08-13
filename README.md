@@ -45,6 +45,7 @@ trustworthy platform on which those things can eventually be built.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — provisional technical architecture and subsystem boundaries
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — capability-gated horizons with honest exit criteria
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — intended macOS cross-development and verification workflow
+- [`docs/BRANCHING.md`](docs/BRANCHING.md) — branch scope, integration gates, and protection of `main`
 - [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) — staged path from cross-compilation to native development
 - [`docs/FILESYSTEM.md`](docs/FILESYSTEM.md) — staged storage plan and criteria for the eventual system filesystem
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural-decision-record policy and decision index
@@ -53,6 +54,8 @@ trustworthy platform on which those things can eventually be built.
 ## Working Agreement
 
 - Build one observable, testable vertical slice at a time.
+- Keep the last completed vertical slice bootable while replacing or refactoring
+  foundational machinery.
 - Treat future architecture support as a boundary-design requirement, not as a
   demand to implement two kernels simultaneously.
 - Prefer established formats and conventions unless Warren has a concrete

@@ -77,6 +77,23 @@ a public include tree. Do not mix `internal/` and `detail/` for the same role.
 Use `.S` only when the C preprocessor is intentionally required. Assembly that
 does not need preprocessing uses `.s` so its true inputs remain visible.
 
+### Source File Header
+
+Every Warren-owned C, C++, and assembly source or header begins with the
+following ownership header, using the file's actual creation date:
+
+```cpp
+//
+// Created by Zack Shrout on M/D/YY.
+// Copyright (c) YYYY BunnySoft. All rights reserved.
+//
+```
+
+The copyright year matches the creation-date year. Assembly files use the
+appropriate assembler comment delimiter while preserving the same text and
+four-line shape. Generated files identify their generator and provenance
+instead; third-party files retain their upstream headers and are not rewritten.
+
 ## Naming Conventions
 
 - User-defined C++ types use `snake_case_t`.
@@ -357,6 +374,19 @@ Assembly is reserved for code that cannot be expressed safely and clearly in
 C++: initial entry, exception vectors, context switching, selected register and
 barrier operations, and tightly justified primitives.
 
+Assembly that implements a routine, transition, or non-trivial instruction
+sequence lives in a dedicated architecture-owned `.s` or `.S` file. AArch64 and
+x86-64 implementations are separate source files selected by the build; one
+assembly file must not grow into a preprocessor-selected multi-architecture
+implementation.
+
+Ordinary algorithms remain in C++ even when Warren must supply them itself.
+Allocators, object management, containers, parsers, and policy code do not
+become assembly merely because the host runtime is unavailable. If later
+profiling justifies an architecture-optimized primitive such as `memcpy`, the
+portable implementation remains the behavioral reference and each optimized
+implementation is isolated behind the same tested interface.
+
 ### File Structure
 
 Each assembly file begins with comments stating:
@@ -449,6 +479,12 @@ burrow_aarch64_write_vbar:
 
 Inline assembly is discouraged. Prefer an out-of-line architecture function when
 it creates a testable boundary.
+
+Inline assembly is acceptable for a tiny, named architecture-layer wrapper
+around an isolated instruction when an intrinsic is unavailable or less clear—for
+example `wfe`, a system-register read, or a precisely scoped barrier. It is not
+used to implement loops, allocation algorithms, exception entry, context
+switches, calling-convention transitions, or multi-step machine-state changes.
 
 When inline assembly is truly clearer:
 

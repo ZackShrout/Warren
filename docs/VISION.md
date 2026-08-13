@@ -11,6 +11,26 @@ commercial operating system or recreate every Unix feature. Its value comes
 from building real vertical slices, understanding every boundary, and retaining
 the freedom to develop an opinionated system where those opinions matter.
 
+Warren has no market deadline and no obligation to reach feature parity with
+Linux, Windows, macOS, or any other general-purpose system. That freedom lowers
+the required breadth, not the standard of engineering. Warren should feel
+grown-up because its contracts, ownership, failure behavior, tooling, and user
+experience are coherent—not because it accumulates the largest feature list.
+
+## Standard Of Ambition
+
+Warren aims to be a small modern operating system, not a reconstruction of a
+legacy DOS-era environment. “Modern” means using current execution modes,
+firmware paths, object formats, protection mechanisms, and deliberately selected
+hardware interfaces. It does not mean claiming support for every contemporary
+computer or device.
+
+The supported hardware matrix may remain narrow: one precisely defined virtual
+AArch64 machine, a later virtual x86-64 machine, and eventually selected physical
+systems whose firmware and devices are documented well enough to understand and
+maintain. A narrow honest platform contract is more mature than vague universal
+compatibility.
+
 ## North Star
 
 The long-term Warren experience is:
@@ -50,6 +70,12 @@ commands, or APIs harder to understand.
 
 A smaller subsystem whose invariants can be stated and tested is preferable to
 a fashionable design that cannot be reasoned about locally.
+
+Every Warren-owned line should have a purpose its maintainers can explain.
+Generated code requires an understandable generator and provenance. A third-
+party dependency requires a bounded contract that Warren understands; using a
+compiler, firmware implementation, or authoritative ABI declaration does not
+require recreating that tool or standard inside the repository.
 
 ### Observable from first light
 
@@ -91,6 +117,11 @@ become permanent target requirements.
 
 Milestones complete when their observable exit criteria pass, not when a date
 arrives or a subsystem has accumulated enough code.
+
+Warren may remain unfinished indefinitely, but the last completed capability
+must remain usable while the next one is developed. Refactoring is not progress
+when it disconnects the only working vertical path without a bounded replacement
+and equivalence test.
 
 ## Compatibility Philosophy
 

@@ -4,6 +4,11 @@ This document defines the host-to-target workflow. Bootstrap records exact
 resolved paths and tool versions in ignored machine-local state so a build does
 not depend on shell path order or Apple's platform defaults.
 
+Repository integration follows `BRANCHING.md`. Development occurs on focused
+branches while `main` remains the last verified integrated state. Build profiles
+are not Git branches: each work branch must preserve every profile required by
+its integration gate.
+
 ## Host And Target Are Different Products
 
 The initial host is macOS on Apple Silicon. The initial target is an AArch64
