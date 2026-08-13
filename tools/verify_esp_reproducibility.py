@@ -18,6 +18,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--mformat", required=True, type=pathlib.Path)
     parser.add_argument("--mcopy", required=True, type=pathlib.Path)
     parser.add_argument("--bootloader", required=True, type=pathlib.Path)
+    parser.add_argument("--burrow", type=pathlib.Path)
     return parser.parse_args()
 
 
@@ -36,21 +37,21 @@ def main() -> int:
         images = [temporary_root / "first.img", temporary_root / "second.img"]
 
         for image in images:
-            subprocess.run(
-                [
-                    str(arguments.python),
-                    str(arguments.builder),
-                    "--mformat",
-                    str(arguments.mformat),
-                    "--mcopy",
-                    str(arguments.mcopy),
-                    "--bootloader",
-                    str(arguments.bootloader),
-                    "--output",
-                    str(image),
-                ],
-                check=True,
-            )
+            command = [
+                str(arguments.python),
+                str(arguments.builder),
+                "--mformat",
+                str(arguments.mformat),
+                "--mcopy",
+                str(arguments.mcopy),
+                "--bootloader",
+                str(arguments.bootloader),
+                "--output",
+                str(image),
+            ]
+            if arguments.burrow is not None:
+                command.extend(("--burrow", str(arguments.burrow)))
+            subprocess.run(command, check=True)
 
         first_digest = digest(images[0])
         second_digest = digest(images[1])

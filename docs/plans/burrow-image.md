@@ -1,6 +1,6 @@
 # Burrow Image Branch Plan
 
-- **Status:** Ready
+- **Status:** Complete — verified 2026-08-13
 - **Branch:** `feature/burrow-image`
 - **Base:** `main` after integration of `foundation/phase-0-contracts`
 - **Roadmap phase:** Phase 1 — First Light

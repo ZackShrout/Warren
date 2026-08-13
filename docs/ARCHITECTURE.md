@@ -1,6 +1,6 @@
 # Warren Architecture
 
-**Status:** Phase 0 contracts accepted; implementation remains incremental
+**Status:** Phase 0 contracts accepted; Phase 1 image production implemented
 
 **Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
 
@@ -8,9 +8,9 @@
 
 This document describes the direction in which Warren begins. The UEFI
 first-light bootloader scaffold, canonical boot-information declarations and
-validators, and host-side contract tests exist; Burrow itself does not yet.
-Stable decisions are recorded in `docs/adr/`, and exact subordinate formats live
-in `docs/specifications/`.
+validators, host-side contract tests, and the first non-executed Burrow ELF
+image exist. Stable decisions are recorded in `docs/adr/`, and exact subordinate
+formats live in `docs/specifications/`.
 
 ## Architectural Shape
 
@@ -94,19 +94,29 @@ header snapshot behind Warren-owned wrappers. No EDK2 build system, runtime,
 library, or driver participates in Warren's build. Clang and `lld-link` produce
 the AArch64 PE32+ `BOOTAA64.EFI` application.
 
-The implemented scaffold packages that application at the standard removable
-media path `EFI/BOOT/BOOTAA64.EFI` in a deterministic FAT32 image. It writes
-versioned `BEGIN` and `PASS` records through the UEFI console and requests
-firmware shutdown. The host parses the accepted record grammar, but this remains
-a pipeline proof rather than Burrow's eventual PL011 plus semihosting result
-transport.
+The implemented UEFI-only scaffold packages that application at the standard
+removable-media path `EFI/BOOT/BOOTAA64.EFI` in a deterministic FAT32 image. The
+combined system image additionally packages Burrow at
+`EFI/WARREN/BURROW.ELF`. It writes versioned `BEGIN` and `PASS` records through
+the UEFI console and requests firmware shutdown. The host parses the accepted
+record grammar, but this remains a pipeline proof rather than Burrow's eventual
+PL011 plus semihosting result transport.
 
-Burrow is loaded as a static position-independent ELF64 `ET_DYN` image. The
-loader supports only the audited relative-relocation subset and rejects dynamic
-linking. An early QEMU direct-load path is permissible for experimentation if it
-produces the same handoff contract and does not leak into kernel core.
+Burrow is built as a static position-independent ELF64 `ET_DYN` image with
+separate read-only, executable, and writable load pages. The current minimal
+image has zero runtime relocations; later images may use only the audited
+`R_AARCH64_RELATIVE` subset. The symbol and runtime copies, program headers,
+sections, dynamic metadata, symbols, relocation policy, and packaging rules are
+specified in `specifications/AARCH64_BURROW_IMAGE.md` and enforced by an
+independent byte-level host verifier.
 
-## Planned Source Layout
+The current bootloader does not open the packaged ELF. The next loader slice
+will locate, validate, allocate, load, zero-fill, and relocate it without
+transferring control. An early QEMU direct-load path remains permissible for
+experimentation if it produces the same handoff contract and does not leak into
+kernel core.
+
+## Source Layout
 
 The layout is established before implementation so dependency rules can be
 enforced from the first build:
@@ -139,8 +149,10 @@ docs/
   adr/                  architectural decision records
 ```
 
-This is a plan, not a demand to create empty directory trees. Directories appear
-when their first owned artifact exists.
+Directories appear only when their first owned artifact exists. The initial
+`kernel/src/Core`, `kernel/src/Arch/AArch64`, and `kernel/linker/AArch64`
+directories now contain the image layout sentinels, nonfunctional architecture
+entry, and audited linker script; later directories remain planned.
 
 ## Portability Layers
 

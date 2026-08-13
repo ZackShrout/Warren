@@ -6,6 +6,7 @@
 set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_SYSTEM_PROCESSOR aarch64)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+set(WARREN_BUILD_ENVIRONMENT burrow CACHE STRING "Warren build environment")
 
 set(_warren_local_paths
     "${CMAKE_CURRENT_LIST_DIR}/../../.warren/ToolchainPaths.cmake"
@@ -22,6 +23,7 @@ include("${_warren_local_paths}")
 
 foreach(_required_path IN ITEMS
     WARREN_HOST_NINJA
+    WARREN_HOST_PYTHON
     WARREN_CLANG
     WARREN_CLANGXX
     WARREN_LD_LLD
