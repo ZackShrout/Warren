@@ -90,6 +90,13 @@
   ],
   "testPresets": [
     {
+      "name": "host-debug",
+      "configurePreset": "host-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
       "name": "uefi-aarch64-debug",
       "configurePreset": "uefi-aarch64-debug",
       "output": {

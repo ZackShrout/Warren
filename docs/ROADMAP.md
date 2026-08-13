@@ -25,34 +25,36 @@ This runway records dependency order, not a promise that later branch boundaries
 will remain unchanged. Only the next branch has a committed detailed plan. The
 runway is reassessed after every merge.
 
-1. **`foundation/phase-0-contracts` — exact executable contracts.** Close the
-   remaining Phase 0 decisions for toolchain policy, boot-information v1, the
-   initial virtual-memory layout, and test-result grammar. The complete plan is
-   in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md).
-2. **`feature/burrow-image` — a verified Burrow artifact.** Build the smallest
+1. **`feature/burrow-image` — a verified Burrow artifact.** Build the smallest
    static position-independent AArch64 ELF64 `ET_DYN` image, define its linker
    layout, audit its segments and relocations, and package it into the ESP. It is
-   inspected and host-tested but not executed yet.
-3. **`feature/burrow-loader` — load without handoff.** Teach the UEFI bootloader
+   inspected and host-tested but not executed yet. The complete plan is in
+   [`plans/burrow-image.md`](plans/burrow-image.md).
+2. **`feature/burrow-loader` — load without handoff.** Teach the UEFI bootloader
    to locate, validate, allocate, load, zero, and apply the permitted
    `R_AARCH64_RELATIVE` relocations to Burrow. It reports the verified entry and
    load bias, then retains the proven firmware-controlled completion path.
-4. **`feature/burrow-first-entry` — transfer execution.** Construct the accepted
+3. **`feature/burrow-first-entry` — transfer execution.** Construct the accepted
    boot-information object, obtain the final UEFI memory map, call
    `ExitBootServices()`, establish the handoff contract, and enter Burrow's
    architecture assembly. A minimal platform diagnostic and test-only result
    transport provide unambiguous proof without pretending the full console or
    normalized kernel entry is complete.
-5. **`feature/aarch64-normalized-entry` — reach kernel C++ at EL1.** Add emergency
+4. **`feature/aarch64-normalized-entry` — reach kernel C++ at EL1.** Add emergency
    vectors, supported EL1/EL2 normalization, an owned transition stack and early
    page tables, then call architecture-neutral Burrow entry under the accepted
    state contract.
+
+The completed `foundation/phase-0-contracts` plan and verification record remain
+available in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md).
 
 Likely later slices include the allocation-free PL011 console, complete exception
 reporting, and the ARM generic timer. Their exact branch boundaries depend on
 what the entry work demonstrates.
 
 ## Phase 0 — Foundation
+
+**Status:** Complete
 
 **Objective:** Agree on how Warren will make decisions and prove progress before
 creating architectural momentum in code.
@@ -69,10 +71,17 @@ Planned work:
 Completed foundation evidence:
 
 - reproducible macOS bootstrap with a compiled AArch64 probe;
+- machine-readable tool compatibility ranges, a last-known-good tuple, and
+  rejection tests for unsupported or internally mismatched tools;
 - hash-pinned, 25-header EDK2 ABI snapshot behind one Warren wrapper;
 - Clang/`lld-link` AArch64 UEFI application build;
-- deterministic FAT32 ESP construction; and
-- bounded QEMU UEFI smoke boot in debug and release profiles.
+- deterministic FAT32 ESP construction;
+- bounded QEMU UEFI smoke boot in debug and release profiles;
+- accepted boot-information 1.0 byte layout with C/C++ host and AArch64 ABI
+  checks plus independent valid and malformed fixtures;
+- accepted 48-bit AArch64 virtual layout with a bounded identity-to-higher-half
+  transition contract; and
+- accepted serial/semihosting result grammar with a tested host classifier.
 
 Exit gates:
 
@@ -82,6 +91,8 @@ Exit gates:
 - the First Light test protocol has explicit success and failure signals.
 
 ## Phase 1 — First Light
+
+**Status:** Next active phase
 
 **Objective:** Boot Burrow reproducibly and make early failure observable.
 

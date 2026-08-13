@@ -1,6 +1,6 @@
 # Phase 0 Contracts Branch Plan
 
-- **Status:** Planned
+- **Status:** Complete — verified 2026-08-13
 - **Branch:** `foundation/phase-0-contracts`
 - **Base:** `main`
 - **Roadmap phase:** Phase 0 — Foundation

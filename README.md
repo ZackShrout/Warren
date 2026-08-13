@@ -5,11 +5,14 @@ Burrow. The project begins on AArch64 under emulation, is designed to admit an
 x86-64 port, and ultimately aims to support native software development on
 Warren itself.
 
-Warren is currently in **Phase 0: Foundation**. There is intentionally no Burrow
-kernel implementation yet. The repository does contain the completed UEFI
-first-light scaffold: Warren's AArch64 bootloader can be built, placed in an EFI
-System Partition, booted under QEMU, and smoke-tested automatically. This proves
-the toolchain and boot-image pipeline without pretending the kernel exists.
+Warren has completed **Phase 0: Foundation** and is ready for **Phase 1: First
+Light** implementation. There is intentionally no Burrow kernel implementation
+yet. The repository contains the completed UEFI first-light scaffold: Warren's
+AArch64 bootloader can be built, placed in an EFI System Partition, booted under
+QEMU, and smoke-tested automatically. This proves the toolchain and boot-image
+pipeline without pretending the kernel exists. The Phase 0 toolchain,
+boot-information, virtual-memory, and test-result contracts are accepted and
+backed by host and cross-target checks.
 
 ## Project Vocabulary
 
@@ -91,8 +94,8 @@ ctest --preset uefi-aarch64-debug
 
 The build produces `BOOTAA64.EFI` and a 64 MiB `warren-esp.img` under
 `build/uefi-aarch64-debug/artifacts/`. The smoke test boots the image on the
-pinned QEMU machine and requires
-`WARREN_TEST:1:PASS:uefi-first-light` before firmware shutdown.
+pinned QEMU machine, parses matching `BEGIN` and `PASS` records for
+`uefi-first-light`, and requires clean firmware shutdown.
 
 ## Licensing
 

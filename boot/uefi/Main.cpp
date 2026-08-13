@@ -15,6 +15,12 @@ namespace
         'e', 'n', '\r', '\n', 0
     };
 
+    CHAR16 begin_marker[]{
+        'W', 'A', 'R', 'R', 'E', 'N', '_', 'T', 'E', 'S', 'T', ':', '1', ':',
+        'B', 'E', 'G', 'I', 'N', ':', 'u', 'e', 'f', 'i', '-', 'f', 'i', 'r',
+        's', 't', '-', 'l', 'i', 'g', 'h', 't', '\r', '\n', 0
+    };
+
     CHAR16 success_marker[]{
         'W', 'A', 'R', 'R', 'E', 'N', '_', 'T', 'E', 'S', 'T', ':', '1', ':',
         'P', 'A', 'S', 'S', ':', 'u', 'e', 'f', 'i', '-', 'f', 'i', 'r', 's',
@@ -32,6 +38,10 @@ extern "C" EFI_STATUS EFIAPI efi_main(
         return EFI_INVALID_PARAMETER;
 
     EFI_STATUS status{ warren::boot::uefi::write(*system_table, banner) };
+    if (EFI_ERROR(status))
+        return status;
+
+    status = warren::boot::uefi::write(*system_table, begin_marker);
     if (EFI_ERROR(status))
         return status;
 

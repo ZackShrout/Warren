@@ -1,13 +1,16 @@
 # Warren Architecture
 
-**Status:** Provisional architecture for Phase 0 planning  
-**Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU  
+**Status:** Phase 0 contracts accepted; implementation remains incremental
+
+**Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
+
 **Future target:** x86-64, selected only after the shared boundaries are proven
 
-This document describes the direction in which Warren should begin. Only the
-UEFI first-light bootloader scaffold currently exists; the Burrow components
-below remain a plan. Stable decisions are recorded in `docs/adr/`; unresolved
-questions remain labeled here instead of receiving accidental answers in code.
+This document describes the direction in which Warren begins. The UEFI
+first-light bootloader scaffold, canonical boot-information declarations and
+validators, and host-side contract tests exist; Burrow itself does not yet.
+Stable decisions are recorded in `docs/adr/`, and exact subordinate formats live
+in `docs/specifications/`.
 
 ## Architectural Shape
 
@@ -56,9 +59,10 @@ Initial machine assumptions:
 | Kernel object | Position-independent ELF64 `ET_DYN` |
 | Data model | LP64, little-endian |
 
-The later Burrow-owned virtual-address layout, exact boot-protocol fields, and
-firmware/header provenance snapshot remain to be settled before their respective
-implementation steps.
+Burrow adopts a 48-bit canonical virtual-address layout after its bounded
+identity-mapped transition. The upper half contains explicit direct-map, MMIO,
+dynamic, reserved, guard, and stable image regions under ADR-0016. The exact
+boot protocol and integrity-pinned EDK2/firmware inputs are also settled.
 
 ## Boot Architecture
 
@@ -70,22 +74,20 @@ The boot path has three conceptual participants:
 3. Burrow takes ownership, validates the structure, establishes its own memory
    and exception environment, and never relies on live firmware services again.
 
-The boot-information structure is one contiguous, versioned, physical-memory
-object and contains no compiler-native pointers.
-Its early design is expected to include:
+Boot-information protocol 1.0 is one contiguous, versioned physical-memory
+object with a fixed 256-byte header and bounded relative sections. Its required
+normalized memory map preserves Warren ownership kinds and namespaced firmware
+source metadata. The header describes Burrow's physical allocation, physical
+load bias and entry, bootstrap stack, and optional initial image, ACPI, and
+device-tree resources. Optional contained sections describe command-line bytes,
+PL011 early-console state, and a framebuffer.
 
-- a magic value, size, and protocol version;
-- physical memory-map entries with explicit types;
-- kernel physical and virtual image extents;
-- command-line bytes and length;
-- initial-ramdisk location and length;
-- early-console description;
-- optional framebuffer description; and
-- firmware/system-table data only when a later kernel service truly needs it.
-
-All addresses declare whether they are physical or virtual. All arrays carry
-element size and count. Burrow rejects incompatible versions rather than
-guessing.
+The architecture-neutral C-compatible declaration contains no pointer,
+`size_t`, reference, `bool`, native enum, bit-field, or implicit padding. C and
+C++ compile-time checks prove every size, alignment, and offset on the host and
+bare AArch64 target. An allocation-free consumer validates independent raw-byte
+fixtures according to the ordered rules in
+`specifications/BOOT_INFORMATION_V1.md`.
 
 The bootloader is freestanding C++20 and uses a curated, pinned EDK2 UEFI ABI
 header snapshot behind Warren-owned wrappers. No EDK2 build system, runtime,
@@ -93,15 +95,16 @@ library, or driver participates in Warren's build. Clang and `lld-link` produce
 the AArch64 PE32+ `BOOTAA64.EFI` application.
 
 The implemented scaffold packages that application at the standard removable
-media path `EFI/BOOT/BOOTAA64.EFI` in a deterministic FAT32 image. It writes a
-versioned marker through the UEFI console and requests firmware shutdown. This
-is a pipeline proof, not Burrow's eventual PL011 console or semihosted Phase 1
-test-result transport.
+media path `EFI/BOOT/BOOTAA64.EFI` in a deterministic FAT32 image. It writes
+versioned `BEGIN` and `PASS` records through the UEFI console and requests
+firmware shutdown. The host parses the accepted record grammar, but this remains
+a pipeline proof rather than Burrow's eventual PL011 plus semihosting result
+transport.
 
 Burrow is loaded as a static position-independent ELF64 `ET_DYN` image. The
 loader supports only the audited relative-relocation subset and rejects dynamic
-linking. An early QEMU direct-load path is permissible for experimentation if it produces
-the same handoff contract and does not leak into kernel core.
+linking. An early QEMU direct-load path is permissible for experimentation if it
+produces the same handoff contract and does not leak into kernel core.
 
 ## Planned Source Layout
 
@@ -211,9 +214,13 @@ Memory management grows through explicit ownership stages:
 6. **Advanced VM:** demand paging, copy-on-write, mapped files, shared memory,
    and reclamation only after their policies can be tested.
 
-Virtual-address layout and higher-half placement remain open memory-management
-decisions. Burrow initially enters through firmware's identity mapping and then
-adopts Burrow-owned mappings; it does not begin as a higher-half kernel.
+Burrow initially enters through firmware's identity mapping and does not begin
+as a higher-half kernel. At normalized EL1 it constructs a minimal owned
+identity subset and a 48-bit upper-half layout, activates those tables, moves
+execution, vectors, stack, and surviving resources to deliberate higher-half
+mappings, then removes all TTBR0 identity aliases. The direct map covers only
+eligible normal memory; MMIO is explicit; writable aliases of the Burrow image
+are forbidden. ADR-0016 owns the complete ranges and transition gates.
 Shared code speaks in distinct physical-address, virtual-address, byte-count,
 and page-count types to prevent unit confusion.
 
@@ -289,18 +296,13 @@ During early development:
 
 Nothing becomes stable merely because it was committed once.
 
-## Open Architectural Decisions
+## Scheduled Architectural Decisions
 
-Before First Light implementation begins, Warren must decide and record:
+The Phase 0 decision queue is empty. First Light still requires the focused,
+register-level EL2/EL1 normalization sequence already governed by ADR-0011; it
+will be settled with the prototype that can prove both entry paths rather than
+guessed in Phase 0.
 
-- the exact boot-information protocol v1 field/table layout;
-- the pinned EDK2 header revision and minimal header closure;
-- the QEMU EDK2 firmware provenance/hash policy;
-- the register-level EL2/EL1 normalization sequence; and
-- the serial test-record grammar and result codes.
-
-The higher-half virtual layout is required during the memory-management phase,
-not before the first loader-to-kernel transfer. Later decisions include the
-syscall ABI, kernel object model, scheduler policy, VFS semantics, libc strategy,
-service model, package format, graphics stack, and first supported x86-64
-platform. They should not be guessed prematurely.
+Later decisions include the syscall ABI, kernel object model, scheduler policy,
+VFS semantics, libc strategy, service model, package format, graphics stack, and
+first supported x86-64 platform. They should not be guessed prematurely.
