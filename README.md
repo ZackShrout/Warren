@@ -5,14 +5,14 @@ Burrow. The project begins on AArch64 under emulation, is designed to admit an
 x86-64 port, and ultimately aims to support native software development on
 Warren itself.
 
-Warren has completed **Phase 0: Foundation** and is ready for **Phase 1: First
-Light** implementation. There is intentionally no Burrow kernel implementation
-yet. The repository contains the completed UEFI first-light scaffold: Warren's
-AArch64 bootloader can be built, placed in an EFI System Partition, booted under
-QEMU, and smoke-tested automatically. This proves the toolchain and boot-image
-pipeline without pretending the kernel exists. The Phase 0 toolchain,
-boot-information, virtual-memory, and test-result contracts are accepted and
-backed by host and cross-target checks.
+Warren has completed **Phase 0: Foundation** and begun **Phase 1: First Light**.
+The repository now builds and audits Burrow's first AArch64 ELF image, keeps a
+symbol-bearing copy, packages a debug-stripped runtime copy beside Warren's UEFI
+bootloader, and proves the combined EFI System Partition is reproducible. The
+bootloader does not yet open, load, or execute Burrow; QEMU still proves only
+the existing firmware pipeline. Phase 0's toolchain, boot-information,
+virtual-memory, and test-result contracts remain accepted and backed by host
+and cross-target checks.
 
 ## Project Vocabulary
 
@@ -52,6 +52,7 @@ trustworthy platform on which those things can eventually be built.
 - [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) — staged path from cross-compilation to native development
 - [`docs/FILESYSTEM.md`](docs/FILESYSTEM.md) — staged storage plan and criteria for the eventual system filesystem
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural-decision-record policy and decision index
+- [`docs/specifications/AARCH64_BURROW_IMAGE.md`](docs/specifications/AARCH64_BURROW_IMAGE.md) — implemented Burrow ELF and packaging contract
 - [`CODE_STANDARDS.md`](CODE_STANDARDS.md) — Warren-specific C++ and assembly standards
 
 ## Working Agreement
@@ -83,19 +84,25 @@ and generate ignored machine-local paths under `.warren/`:
 ./tools/bootstrap.sh --install
 ```
 
-After bootstrap, build and test the current UEFI slice through the checked-in
-presets:
+After bootstrap, build and test the current combined debug system through the
+checked-in presets:
 
 ```sh
-cmake --preset uefi-aarch64-debug
-cmake --build --preset uefi-aarch64-debug
-ctest --preset uefi-aarch64-debug
+cmake --preset system-aarch64-debug
+cmake --build --preset system-aarch64-debug
+ctest --preset system-aarch64-debug
 ```
 
-The build produces `BOOTAA64.EFI` and a 64 MiB `warren-esp.img` under
-`build/uefi-aarch64-debug/artifacts/`. The smoke test boots the image on the
-pinned QEMU machine, parses matching `BEGIN` and `PASS` records for
-`uefi-first-light`, and requires clean firmware shutdown.
+The build keeps Burrow and UEFI in separate compiler environments, then places
+`BOOTAA64.EFI` and `BURROW.ELF` into the 64 MiB
+`build/system-aarch64-debug/artifacts/warren-system-esp.img`. CTest extracts and
+compares both packaged payloads, rebuilds the ESP twice for byte equality, and
+boots it on the pinned QEMU machine. Matching `BEGIN` and `PASS` records for
+`uefi-first-light` require clean firmware shutdown but do not claim Burrow ran.
+
+The `aarch64-debug` and `uefi-aarch64-debug` presets remain available for
+focused product builds. The Burrow, UEFI, and system profiles each have a
+matching release preset.
 
 ## Licensing
 

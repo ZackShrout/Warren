@@ -22,13 +22,14 @@ These tracks advance alongside every applicable phase:
 ## Near-Term Branch Runway
 
 This runway records dependency order, not a promise that later branch boundaries
-will remain unchanged. Only the next branch has a committed detailed plan. The
-runway is reassessed after every merge.
+will remain unchanged. Only an active branch receives a committed detailed plan.
+The runway is reassessed after every merge.
 
-1. **`feature/burrow-image` — a verified Burrow artifact.** Build the smallest
-   static position-independent AArch64 ELF64 `ET_DYN` image, define its linker
-   layout, audit its segments and relocations, and package it into the ESP. It is
-   inspected and host-tested but not executed yet. The complete plan is in
+1. **`feature/burrow-image` — a verified Burrow artifact.** This completed slice
+   builds the smallest static position-independent AArch64 ELF64 `ET_DYN` image,
+   defines its linker layout, audits its segments and relocations, and packages
+   it into the ESP. It is inspected and host-tested but not executed yet. The
+   complete plan is in
    [`plans/burrow-image.md`](plans/burrow-image.md).
 2. **`feature/burrow-loader` — load without handoff.** Teach the UEFI bootloader
    to locate, validate, allocate, load, zero, and apply the permitted
@@ -46,7 +47,9 @@ runway is reassessed after every merge.
    state contract.
 
 The completed `foundation/phase-0-contracts` plan and verification record remain
-available in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md).
+available in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md). The
+Burrow image's implemented subordinate contract is in
+[`specifications/AARCH64_BURROW_IMAGE.md`](specifications/AARCH64_BURROW_IMAGE.md).
 
 Likely later slices include the allocation-free PL011 console, complete exception
 reporting, and the ARM generic timer. Their exact branch boundaries depend on
@@ -92,7 +95,7 @@ Exit gates:
 
 ## Phase 1 — First Light
 
-**Status:** Next active phase
+**Status:** Active
 
 **Objective:** Boot Burrow reproducibly and make early failure observable.
 
@@ -107,6 +110,16 @@ Capabilities:
 - a tiny allocation-free diagnostic monitor;
 - linker map and symbolized debug workflow; and
 - QEMU smoke test with timeout and machine-readable completion.
+
+Completed Phase 1 evidence:
+
+- audited AArch64 ELF64 `ET_DYN` symbol and runtime images in debug and release;
+- page-separated read-only, executable, writable, and zero-filled content;
+- independent generated malformed-ELF fixtures and build-time image audit;
+- deterministic combined ESP packaging with byte-identical Burrow and UEFI
+  inputs; and
+- isolated Burrow/UEFI compiler environments with debug and release system
+  profiles that preserve the existing QEMU firmware smoke result.
 
 Exit demonstration:
 

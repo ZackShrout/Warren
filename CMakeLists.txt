@@ -1,10 +1,20 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(Warren
-    VERSION 0.0.0
-    DESCRIPTION "BunnySoft Warren operating system"
-    LANGUAGES C CXX ASM
-)
+set(WARREN_BUILD_ENVIRONMENT "host" CACHE STRING "Warren build environment")
+
+if(WARREN_BUILD_ENVIRONMENT STREQUAL "system")
+    project(Warren
+        VERSION 0.0.0
+        DESCRIPTION "BunnySoft Warren operating system image"
+        LANGUAGES NONE
+    )
+else()
+    project(Warren
+        VERSION 0.0.0
+        DESCRIPTION "BunnySoft Warren operating system"
+        LANGUAGES C CXX ASM
+    )
+endif()
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -14,11 +24,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(WARREN_BUILD_ENVIRONMENT "host" CACHE STRING "Warren build environment")
-
 enable_testing()
 
-if(CMAKE_CROSSCOMPILING)
+if(WARREN_BUILD_ENVIRONMENT STREQUAL "system")
+    message(STATUS "Warren system-image orchestration: ${CMAKE_HOST_SYSTEM_NAME}")
+elseif(CMAKE_CROSSCOMPILING)
     message(STATUS "Warren target: ${CMAKE_SYSTEM_PROCESSOR} (${CMAKE_SYSTEM_NAME})")
 else()
     message(STATUS "Warren host tools: ${CMAKE_HOST_SYSTEM_PROCESSOR} (${CMAKE_HOST_SYSTEM_NAME})")
@@ -32,6 +42,7 @@ add_custom_target(WarrenPlanning SOURCES
     README.md
     CMakePresets.json
     LICENSE
+    cmake/SystemImage.cmake
     docs/ARCHITECTURE.md
     docs/BRANCHING.md
     docs/DECISIONS.md
@@ -60,8 +71,12 @@ add_custom_target(WarrenPlanning SOURCES
     docs/adr/0014-toolchain-compatibility-baseline.md
     docs/adr/0015-boot-information-v1-layout.md
     docs/adr/0016-initial-aarch64-virtual-memory-layout.md
+    docs/specifications/AARCH64_BURROW_IMAGE.md
     docs/specifications/BOOT_INFORMATION_V1.md
     docs/specifications/TEST_RESULT_PROTOCOL_V1.md
+    kernel/linker/AArch64/burrow.ld
+    kernel/src/Arch/AArch64/Entry.s
+    kernel/src/Core/ImageLayout.cpp
     third_party/README.md
     third_party/edk2/LICENSE
     third_party/edk2/README.md
@@ -74,11 +89,20 @@ add_custom_target(WarrenPlanning SOURCES
     tools/dependencies/ToolchainBaseline.cmake
     tools/dependencies/check_tool_versions.cmake
     tools/run_uefi_smoke.py
+    tools/verify_burrow_image.py
+    tools/verify_esp_contents.py
     tools/verify_esp_reproducibility.py
     tools/verify_uefi_image.py
     tools/warren_test_protocol.py
+    tests/host/BurrowImageVerifierTests.py
+    tests/host/EspBuilderTests.py
     tests/host/WarrenTestProtocolTests.py
 )
+
+if(WARREN_BUILD_ENVIRONMENT STREQUAL "system")
+    include(cmake/SystemImage.cmake)
+    return()
+endif()
 
 add_library(WarrenBootProtocol OBJECT
     sdk/include/warren/boot/BootInformation.h
@@ -148,6 +172,18 @@ if(NOT CMAKE_CROSSCOMPILING)
     )
 
     add_test(
+        NAME WarrenBurrowImageVerifier
+        COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/host/BurrowImageVerifierTests.py"
+    )
+
+    add_test(
+        NAME WarrenEspBuilderInputs
+        COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/host/EspBuilderTests.py"
+    )
+
+    add_test(
         NAME WarrenToolchainKnownGoodBaseline
         COMMAND "${CMAKE_COMMAND}"
             -DWARREN_BASELINE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tools/dependencies/ToolchainBaseline.cmake
@@ -194,6 +230,121 @@ if(NOT CMAKE_CROSSCOMPILING)
     set_tests_properties(WarrenToolchainRejectsLlvmLldMismatch PROPERTIES
         WILL_FAIL TRUE
     )
+endif()
+
+if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
+    add_library(BurrowImageObjects OBJECT
+        kernel/src/Arch/AArch64/Entry.s
+        kernel/src/Core/ImageLayout.cpp
+    )
+    target_compile_options(BurrowImageObjects PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-ffreestanding>
+        $<$<COMPILE_LANGUAGE:CXX>:-fpie>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-stack-protector>
+        $<$<COMPILE_LANGUAGE:CXX>:-fvisibility=hidden>
+        $<$<COMPILE_LANGUAGE:CXX>:-ffunction-sections>
+        $<$<COMPILE_LANGUAGE:CXX>:-fdata-sections>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wall>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wpedantic>
+        $<$<COMPILE_LANGUAGE:CXX>:-Werror>
+        $<$<COMPILE_LANGUAGE:ASM>:-Wno-unused-command-line-argument>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-threadsafe-statics>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-use-cxa-atexit>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-unwind-tables>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-asynchronous-unwind-tables>
+        $<$<COMPILE_LANGUAGE:CXX>:-nostdinc>
+        $<$<COMPILE_LANGUAGE:CXX>:-nostdinc++>
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-O0>
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-gdwarf-5>
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-fdebug-compilation-dir=.>
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-fdebug-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.>
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.>
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:-O2>
+    )
+    target_compile_definitions(BurrowImageObjects PRIVATE
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:NDEBUG>
+    )
+
+    set(_burrow_artifact_directory "${CMAKE_CURRENT_BINARY_DIR}/artifacts")
+    set(_burrow_symbol_image "${_burrow_artifact_directory}/burrow.elf")
+    set(_burrow_runtime_image "${_burrow_artifact_directory}/burrow-runtime.elf")
+    set(_burrow_map "${_burrow_artifact_directory}/burrow.map")
+
+    add_custom_command(
+        OUTPUT
+            "${_burrow_symbol_image}"
+            "${_burrow_runtime_image}"
+            "${_burrow_map}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_burrow_artifact_directory}"
+        COMMAND "${WARREN_LD_LLD}"
+            -shared
+            --hash-style=gnu
+            --no-dynamic-linker
+            --entry=burrow_aarch64_entry
+            --script=${CMAKE_CURRENT_SOURCE_DIR}/kernel/linker/AArch64/burrow.ld
+            --gc-sections
+            --build-id=none
+            --no-undefined
+            --fatal-warnings
+            --pack-dyn-relocs=none
+            -z
+            text
+            -z
+            max-page-size=4096
+            -z
+            common-page-size=4096
+            -z
+            noexecstack
+            --Map=${_burrow_map}
+            -o
+            "${_burrow_symbol_image}"
+            $<TARGET_OBJECTS:BurrowImageObjects>
+        COMMAND "${WARREN_HOST_PYTHON}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
+            --image "${_burrow_symbol_image}"
+        COMMAND "${CMAKE_OBJCOPY}"
+            --strip-debug
+            "${_burrow_symbol_image}"
+            "${_burrow_runtime_image}"
+        COMMAND "${WARREN_HOST_PYTHON}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
+            --runtime
+            --image "${_burrow_runtime_image}"
+            --reference-image "${_burrow_symbol_image}"
+        DEPENDS
+            BurrowImageObjects
+            $<TARGET_OBJECTS:BurrowImageObjects>
+            kernel/linker/AArch64/burrow.ld
+            tools/verify_burrow_image.py
+        COMMAND_EXPAND_LISTS
+        VERBATIM
+    )
+
+    add_custom_target(BurrowImage ALL
+        DEPENDS
+            "${_burrow_symbol_image}"
+            "${_burrow_runtime_image}"
+            "${_burrow_map}"
+    )
+
+    add_custom_target(BurrowDisassembly
+        COMMAND "${CMAKE_OBJDUMP}"
+            --disassemble
+            --demangle
+            --source
+            "${_burrow_symbol_image}"
+        DEPENDS BurrowImage
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        USES_TERMINAL
+    )
+
+    unset(_burrow_artifact_directory)
+    unset(_burrow_symbol_image)
+    unset(_burrow_runtime_image)
+    unset(_burrow_map)
 endif()
 
 if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")

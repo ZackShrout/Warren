@@ -29,7 +29,8 @@
       "binaryDir": "${sourceDir}/build/aarch64-debug",
       "toolchainFile": "${sourceDir}/cmake/toolchains/AArch64Warren.cmake",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "WARREN_BUILD_ENVIRONMENT": "burrow"
       }
     },
     {
@@ -40,7 +41,8 @@
       "binaryDir": "${sourceDir}/build/aarch64-release",
       "toolchainFile": "${sourceDir}/cmake/toolchains/AArch64Warren.cmake",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "WARREN_BUILD_ENVIRONMENT": "burrow"
       }
     },
     {
@@ -51,7 +53,8 @@
       "binaryDir": "${sourceDir}/build/uefi-aarch64-debug",
       "toolchainFile": "${sourceDir}/cmake/toolchains/AArch64Uefi.cmake",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "WARREN_BUILD_ENVIRONMENT": "uefi"
       }
     },
     {
@@ -62,7 +65,30 @@
       "binaryDir": "${sourceDir}/build/uefi-aarch64-release",
       "toolchainFile": "${sourceDir}/cmake/toolchains/AArch64Uefi.cmake",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "WARREN_BUILD_ENVIRONMENT": "uefi"
+      }
+    },
+    {
+      "name": "system-aarch64-debug",
+      "displayName": "Warren system AArch64 — Debug",
+      "description": "Build isolated debug Burrow and UEFI products into one verified ESP.",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/system-aarch64-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "WARREN_BUILD_ENVIRONMENT": "system"
+      }
+    },
+    {
+      "name": "system-aarch64-release",
+      "displayName": "Warren system AArch64 — Release",
+      "description": "Build isolated release Burrow and UEFI products into one verified ESP.",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/system-aarch64-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "WARREN_BUILD_ENVIRONMENT": "system"
       }
     }
   ],
@@ -86,6 +112,14 @@
     {
       "name": "uefi-aarch64-release",
       "configurePreset": "uefi-aarch64-release"
+    },
+    {
+      "name": "system-aarch64-debug",
+      "configurePreset": "system-aarch64-debug"
+    },
+    {
+      "name": "system-aarch64-release",
+      "configurePreset": "system-aarch64-release"
     }
   ],
   "testPresets": [
@@ -106,6 +140,20 @@
     {
       "name": "uefi-aarch64-release",
       "configurePreset": "uefi-aarch64-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "system-aarch64-debug",
+      "configurePreset": "system-aarch64-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "system-aarch64-release",
+      "configurePreset": "system-aarch64-release",
       "output": {
         "outputOnFailure": true
       }

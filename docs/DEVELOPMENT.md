@@ -80,27 +80,49 @@ only the 25 individually hashed files on the checked-in allowlist. QEMU's UEFI
 code and variable-store images are also verified against a checked-in integrity
 manifest before any build paths are generated.
 
-## Current UEFI Slice
+## Current Burrow Image Slice
 
-The stable developer commands are:
+The stable combined developer commands are:
 
 ```sh
 ./tools/bootstrap.sh --check
 cmake --preset host-debug
 cmake --build --preset host-debug
 ctest --preset host-debug
+cmake --preset system-aarch64-debug
+cmake --build --preset system-aarch64-debug
+ctest --preset system-aarch64-debug
+```
+
+Use `system-aarch64-release` for the matching optimized build. Each system
+profile configures isolated Burrow and UEFI child trees, compiles them for
+`aarch64-none-elf` and `aarch64-pc-windows-msvc` respectively, and composes only
+their verified outputs. It does not compile either product using the other's
+environment.
+
+CTest extracts the bootloader and runtime ELF from the combined ESP and compares
+their bytes to the selected inputs, proves complete ESP reproducibility, and
+runs the existing QEMU UEFI smoke test. That smoke result does not mean the
+bootloader opened or executed Burrow. The host profile tests the ELF verifier's
+generated valid and malformed fixtures, ESP input failures, the boot-information
+ABI, the serial result parser/classifier, and positive and negative
+toolchain-baseline cases.
+
+Focused profiles remain supported:
+
+```sh
+cmake --preset aarch64-debug
+cmake --build --preset aarch64-debug
+
 cmake --preset uefi-aarch64-debug
 cmake --build --preset uefi-aarch64-debug
 ctest --preset uefi-aarch64-debug
 ```
 
-Use the `uefi-aarch64-release` preset for the matching optimized build and smoke
-test. `cmake --build build/uefi-aarch64-debug --target run-uefi` is a convenient
-combined build-and-run front door. CTest verifies both a real QEMU boot and
-byte-for-byte reproducible ESP construction. The host profile proves the
-boot-information ABI from C and C++, runs independent malformed-object fixtures,
-tests the serial result parser/classifier, and exercises positive and negative
-toolchain-baseline cases.
+`cmake --build build/aarch64-debug --target BurrowDisassembly` prints
+source-aware AArch64 disassembly without generating a persistent report.
+`cmake --build build/uefi-aarch64-debug --target run-uefi` remains the focused
+UEFI build-and-run front door.
 
 ## Build Trees And Artifacts
 
@@ -113,6 +135,11 @@ build/
   aarch64-release/
   uefi-aarch64-debug/
   uefi-aarch64-release/
+  system-aarch64-debug/
+    products/burrow/
+    products/uefi/
+    artifacts/
+  system-aarch64-release/
   x86_64-debug/       future
 ```
 
@@ -128,6 +155,11 @@ Generated artifacts should have unambiguous roles:
 
 No generated file is checked in unless it is a deliberate fixture whose source
 and regeneration procedure are documented.
+
+The bare AArch64 profiles emit `burrow.elf`, `burrow-runtime.elf`, and
+`burrow.map` under their `artifacts/` directory. The combined profiles emit
+`warren-system-esp.img` under their own `artifacts/` directory. Exact image and
+packaging contracts live in `specifications/AARCH64_BURROW_IMAGE.md`.
 
 ## Build Profiles
 
@@ -259,10 +291,12 @@ should be:
 2. configure from a clean build tree;
 3. build host tools and host tests;
 4. run host tests;
-5. compile the canonical declarations for bare AArch64 debug and release;
-6. build UEFI AArch64 debug and release images;
-7. run bounded QEMU and reproducibility tests for both; and
-8. retain logs, maps, and images for failed runs.
+5. build and byte-audit Burrow debug and release symbol/runtime images;
+6. build and test the focused UEFI AArch64 debug and release images;
+7. build combined debug and release images through isolated child toolchains;
+8. verify packaged bytes, ESP reproducibility, and bounded QEMU completion for
+   both combined profiles; and
+9. retain logs, maps, and images for failed runs.
 
 The future x86-64 checkpoint joins this matrix without making every experimental
 platform a required gate.

@@ -21,6 +21,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--mformat", required=True, type=pathlib.Path)
     parser.add_argument("--mcopy", required=True, type=pathlib.Path)
     parser.add_argument("--bootloader", required=True, type=pathlib.Path)
+    parser.add_argument("--burrow", action="append", type=pathlib.Path)
     parser.add_argument("--output", required=True, type=pathlib.Path)
     return parser.parse_args()
 
@@ -31,6 +32,16 @@ def run(command: list[str]) -> None:
 
 def main() -> int:
     arguments = parse_arguments()
+    burrow_inputs = arguments.burrow or []
+    if len(burrow_inputs) > 1:
+        raise SystemExit("Burrow input is ambiguous; provide --burrow exactly once")
+    burrow_input = burrow_inputs[0] if burrow_inputs else None
+
+    if not arguments.bootloader.is_file():
+        raise SystemExit(f"Bootloader input is not a file: {arguments.bootloader}")
+    if burrow_input is not None and not burrow_input.is_file():
+        raise SystemExit(f"Burrow input is not a file: {burrow_input}")
+
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(
@@ -43,8 +54,16 @@ def main() -> int:
         bootloader = boot_directory / "BOOTAA64.EFI"
         shutil.copyfile(arguments.bootloader, bootloader)
 
+        staged_paths = [bootloader]
+        if burrow_input is not None:
+            warren_directory = temporary_root / "staging" / "EFI" / "WARREN"
+            warren_directory.mkdir()
+            burrow = warren_directory / "BURROW.ELF"
+            shutil.copyfile(burrow_input, burrow)
+            staged_paths.extend((burrow, warren_directory))
+
         for path in (
-            bootloader,
+            *staged_paths,
             boot_directory,
             boot_directory.parent,
             boot_directory.parent.parent,
