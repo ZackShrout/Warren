@@ -41,6 +41,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/ROADMAP.md
     docs/SELF_HOSTING.md
     docs/VISION.md
+    docs/plans/burrow-image.md
     docs/plans/phase-0-contracts.md
     docs/adr/0000-template.md
     docs/adr/0001-reference-target.md
