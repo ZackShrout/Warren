@@ -22,33 +22,31 @@ These tracks advance alongside every applicable phase:
 ## Near-Term Branch Runway
 
 This runway records dependency order, not a promise that later branch boundaries
-will remain unchanged. Only an active branch receives a committed detailed plan.
+will remain unchanged. Only the next branch receives a committed detailed plan.
 The runway is reassessed after every merge.
 
-1. **`feature/burrow-image` — a verified Burrow artifact.** This completed slice
-   builds the smallest static position-independent AArch64 ELF64 `ET_DYN` image,
-   defines its linker layout, audits its segments and relocations, and packages
-   it into the ESP. It is inspected and host-tested but not executed yet. The
-   complete plan is in
-   [`plans/burrow-image.md`](plans/burrow-image.md).
-2. **`feature/burrow-loader` — load without handoff.** Teach the UEFI bootloader
+1. **`feature/burrow-loader` — load without handoff.** Teach the UEFI bootloader
    to locate, validate, allocate, load, zero, and apply the permitted
    `R_AARCH64_RELATIVE` relocations to Burrow. It reports the verified entry and
-   load bias, then retains the proven firmware-controlled completion path.
-3. **`feature/burrow-first-entry` — transfer execution.** Construct the accepted
+   load bias, then retains the proven firmware-controlled completion path. The
+   complete plan is in
+   [`plans/burrow-loader.md`](plans/burrow-loader.md).
+2. **`feature/burrow-first-entry` — transfer execution.** Construct the accepted
    boot-information object, obtain the final UEFI memory map, call
    `ExitBootServices()`, establish the handoff contract, and enter Burrow's
    architecture assembly. A minimal platform diagnostic and test-only result
    transport provide unambiguous proof without pretending the full console or
    normalized kernel entry is complete.
-4. **`feature/aarch64-normalized-entry` — reach kernel C++ at EL1.** Add emergency
+3. **`feature/aarch64-normalized-entry` — reach kernel C++ at EL1.** Add emergency
    vectors, supported EL1/EL2 normalization, an owned transition stack and early
    page tables, then call architecture-neutral Burrow entry under the accepted
    state contract.
 
-The completed `foundation/phase-0-contracts` plan and verification record remain
-available in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md). The
-Burrow image's implemented subordinate contract is in
+The completed `foundation/phase-0-contracts` and `feature/burrow-image` plans
+and verification records remain available in
+[`plans/phase-0-contracts.md`](plans/phase-0-contracts.md) and
+[`plans/burrow-image.md`](plans/burrow-image.md). The Burrow image's implemented
+subordinate contract is in
 [`specifications/AARCH64_BURROW_IMAGE.md`](specifications/AARCH64_BURROW_IMAGE.md).
 
 Likely later slices include the allocation-free PL011 console, complete exception
