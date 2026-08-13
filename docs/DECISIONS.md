@@ -73,14 +73,17 @@ remains trustworthy. Silent retroactive cleanup is forbidden.
 | [0011](adr/0011-aarch64-kernel-handoff.md) | AArch64 kernel handoff | Accepted |
 | [0012](adr/0012-qemu-test-result-transport.md) | QEMU test-result transport | Accepted |
 | [0013](adr/0013-project-license.md) | Project license | Accepted |
+| [0014](adr/0014-toolchain-compatibility-baseline.md) | Toolchain compatibility baseline | Accepted |
+| [0015](adr/0015-boot-information-v1-layout.md) | Boot-information protocol v1 layout | Accepted |
+| [0016](adr/0016-initial-aarch64-virtual-memory-layout.md) | Initial AArch64 virtual-memory layout | Accepted |
 
 ## Phase 0 Decision Queue
 
-The following ADRs remain to be written before First Light implementation:
-
-- exact cross-toolchain versions and dependency-bootstrap details;
-- exact boot-information protocol v1 field layout;
-- initial virtual-memory layout after the identity-mapped bring-up period.
+No pre-implementation Phase 0 architectural decision remains unresolved. The
+test-result grammar and numeric classifications are fixed by
+`specifications/TEST_RESULT_PROTOCOL_V1.md` beneath ADR-0012. The register-level
+EL2/EL1 normalization sequence is a focused First Light implementation decision
+governed by ADR-0011.
 
 The EDK2 snapshot and QEMU firmware provenance are now checked-in integrity
 manifests governed by ADR-0008. A dedicated ADR may still be useful if their

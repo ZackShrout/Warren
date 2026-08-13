@@ -31,8 +31,10 @@ architecture validation milestone before graphical work dominates the system.
 - Burrow receives a versioned, architecture-neutral boot-information structure.
 - Firmware and loader data must be translated before entering kernel core code.
 - The kernel must not call UEFI boot services after ownership is transferred.
-- The boot path must provide, at minimum, the physical memory map, kernel image
-  description, command line, console capability, and optional initial ramdisk.
+- The boot path must provide the normalized physical memory map, kernel and
+  bootstrap-stack descriptions, and versioned object bounds. Command line,
+  console, initial image, framebuffer, ACPI, and device tree remain explicit
+  optional capabilities rather than fabricated mandatory data.
 - The loader implements only the mechanisms needed to locate, validate, load,
   and hand off Burrow. General storage abstractions, long-lived device policy,
   and operating-system services do not grow inside the loader merely because
@@ -125,7 +127,7 @@ At each applicable phase Warren must provide:
 - register and exception-frame dumps;
 - a panic path that cannot recurse silently;
 - deterministic QEMU launch commands; and
-- automated timeout-based boot tests with explicit success markers.
+- automated timeout-based boot tests with agreed serial and process results.
 
 Debug-only instrumentation may be expensive. Release behavior must remain
 defined when that instrumentation is absent.

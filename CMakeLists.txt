@@ -16,16 +16,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(WARREN_BUILD_ENVIRONMENT "host" CACHE STRING "Warren build environment")
 
+enable_testing()
+
 if(CMAKE_CROSSCOMPILING)
     message(STATUS "Warren target: ${CMAKE_SYSTEM_PROCESSOR} (${CMAKE_SYSTEM_NAME})")
 else()
     message(STATUS "Warren host tools: ${CMAKE_HOST_SYSTEM_PROCESSOR} (${CMAKE_HOST_SYSTEM_NAME})")
 endif()
 
-# There is intentionally no operating-system implementation yet. Listing the
-# planning and bootstrap files in a source-only target gives IDEs a coherent
-# project view without inventing empty code targets before their ownership and
-# contracts exist.
+# Keep policy, planning, and bootstrap inputs visible in IDEs without treating
+# documentation or host scripts as target code.
 add_custom_target(WarrenPlanning SOURCES
     .gitignore
     CODE_STANDARDS.md
@@ -56,6 +56,11 @@ add_custom_target(WarrenPlanning SOURCES
     docs/adr/0011-aarch64-kernel-handoff.md
     docs/adr/0012-qemu-test-result-transport.md
     docs/adr/0013-project-license.md
+    docs/adr/0014-toolchain-compatibility-baseline.md
+    docs/adr/0015-boot-information-v1-layout.md
+    docs/adr/0016-initial-aarch64-virtual-memory-layout.md
+    docs/specifications/BOOT_INFORMATION_V1.md
+    docs/specifications/TEST_RESULT_PROTOCOL_V1.md
     third_party/README.md
     third_party/edk2/LICENSE
     third_party/edk2/README.md
@@ -65,14 +70,132 @@ add_custom_target(WarrenPlanning SOURCES
     tools/dependencies/macos-brew.txt
     tools/dependencies/fetch_edk2_headers.sh
     tools/dependencies/qemu-firmware.sha256
+    tools/dependencies/ToolchainBaseline.cmake
+    tools/dependencies/check_tool_versions.cmake
     tools/run_uefi_smoke.py
     tools/verify_esp_reproducibility.py
     tools/verify_uefi_image.py
+    tools/warren_test_protocol.py
+    tests/host/WarrenTestProtocolTests.py
 )
 
-if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
-    enable_testing()
+add_library(WarrenBootProtocol OBJECT
+    sdk/include/warren/boot/BootInformation.h
+    sdk/include/warren/boot/BootInformationValidation.h
+    sdk/src/boot/BootInformationValidation.cpp
+)
+target_include_directories(WarrenBootProtocol PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
+)
+target_compile_options(WarrenBootProtocol PRIVATE
+    -ffreestanding
+    -fno-exceptions
+    -fno-rtti
+    -fno-stack-protector
+    -fno-threadsafe-statics
+    -fno-use-cxa-atexit
+    -nostdinc++
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Werror
+)
 
+add_library(WarrenBootInformationAbiCheck OBJECT
+    tests/abi/BootInformationAbiCheck.c
+    tests/abi/BootInformationAbiCheck.cpp
+)
+target_include_directories(WarrenBootInformationAbiCheck PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
+)
+target_compile_options(WarrenBootInformationAbiCheck PRIVATE
+    -ffreestanding
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
+    $<$<COMPILE_LANGUAGE:CXX>:-nostdinc++>
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Werror
+)
+
+if(NOT CMAKE_CROSSCOMPILING)
+    find_package(Python3 3.14...<3.15 REQUIRED COMPONENTS Interpreter)
+
+    add_executable(WarrenBootInformationTests
+        tests/host/BootInformationTests.cpp
+    )
+    target_link_libraries(WarrenBootInformationTests PRIVATE
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenBootInformationTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenBootInformationProtocol
+        COMMAND WarrenBootInformationTests
+    )
+
+    add_test(
+        NAME WarrenTestResultProtocol
+        COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/host/WarrenTestProtocolTests.py"
+    )
+
+    add_test(
+        NAME WarrenToolchainKnownGoodBaseline
+        COMMAND "${CMAKE_COMMAND}"
+            -DWARREN_BASELINE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tools/dependencies/ToolchainBaseline.cmake
+            -DWARREN_ACTUAL_CMAKE=4.2.3
+            -DWARREN_ACTUAL_NINJA=1.13.2
+            -DWARREN_ACTUAL_LLVM=22.1.8
+            -DWARREN_ACTUAL_LLD=22.1.8
+            -DWARREN_ACTUAL_QEMU=11.0.3
+            -DWARREN_ACTUAL_MTOOLS=4.0.49
+            -DWARREN_ACTUAL_PYTHON=3.14.6
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tools/dependencies/check_tool_versions.cmake"
+    )
+
+    add_test(
+        NAME WarrenToolchainRejectsFutureLlvmMajor
+        COMMAND "${CMAKE_COMMAND}"
+            -DWARREN_BASELINE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tools/dependencies/ToolchainBaseline.cmake
+            -DWARREN_ACTUAL_CMAKE=4.2.3
+            -DWARREN_ACTUAL_NINJA=1.13.2
+            -DWARREN_ACTUAL_LLVM=23.0.0
+            -DWARREN_ACTUAL_LLD=23.0.0
+            -DWARREN_ACTUAL_QEMU=11.0.3
+            -DWARREN_ACTUAL_MTOOLS=4.0.49
+            -DWARREN_ACTUAL_PYTHON=3.14.6
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tools/dependencies/check_tool_versions.cmake"
+    )
+    set_tests_properties(WarrenToolchainRejectsFutureLlvmMajor PROPERTIES
+        WILL_FAIL TRUE
+    )
+
+    add_test(
+        NAME WarrenToolchainRejectsLlvmLldMismatch
+        COMMAND "${CMAKE_COMMAND}"
+            -DWARREN_BASELINE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tools/dependencies/ToolchainBaseline.cmake
+            -DWARREN_ACTUAL_CMAKE=4.2.3
+            -DWARREN_ACTUAL_NINJA=1.13.2
+            -DWARREN_ACTUAL_LLVM=22.1.8
+            -DWARREN_ACTUAL_LLD=22.1.7
+            -DWARREN_ACTUAL_QEMU=11.0.3
+            -DWARREN_ACTUAL_MTOOLS=4.0.49
+            -DWARREN_ACTUAL_PYTHON=3.14.6
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tools/dependencies/check_tool_versions.cmake"
+    )
+    set_tests_properties(WarrenToolchainRejectsLlvmLldMismatch PROPERTIES
+        WILL_FAIL TRUE
+    )
+endif()
+
+if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
     add_library(WarrenUefiBootloaderObject OBJECT
         boot/uefi/Main.cpp
         boot/include/warren/boot/Uefi.h

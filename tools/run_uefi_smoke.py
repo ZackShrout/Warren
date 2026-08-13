@@ -11,8 +11,10 @@ import subprocess
 import sys
 import tempfile
 
+from warren_test_protocol import HostClassification, classify_process_result
 
-EXPECTED_MARKER = "WARREN_TEST:1:PASS:uefi-first-light"
+
+EXPECTED_TEST_IDENTIFIER = "uefi-first-light"
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -67,26 +69,30 @@ def main() -> int:
             result = subprocess.run(
                 command,
                 check=False,
-                text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 timeout=arguments.timeout,
             )
         except subprocess.TimeoutExpired as error:
             output = error.stdout or ""
-            if isinstance(output, bytes):
-                output = output.decode(errors="replace")
-            sys.stdout.write(output)
+            if isinstance(output, str):
+                output = output.encode()
+            sys.stdout.buffer.write(output)
             print(f"QEMU smoke test timed out after {arguments.timeout:g}s", file=sys.stderr)
             return 124
 
-    sys.stdout.write(result.stdout)
-    if EXPECTED_MARKER not in result.stdout:
-        print(f"QEMU output did not contain {EXPECTED_MARKER!r}", file=sys.stderr)
-        return 1
-    if result.returncode != 0:
-        print(f"QEMU exited with status {result.returncode}", file=sys.stderr)
-        return result.returncode
+    sys.stdout.buffer.write(result.stdout)
+    protocol_result = classify_process_result(result.stdout, result.returncode)
+    if (
+        protocol_result.classification is not HostClassification.PASS
+        or protocol_result.test_identifier != EXPECTED_TEST_IDENTIFIER
+    ):
+        print(
+            f"UEFI smoke classification: {protocol_result.classification.value}: "
+            f"{protocol_result.detail}",
+            file=sys.stderr,
+        )
+        return protocol_result.harness_status or 3
 
     print("Warren UEFI smoke test passed")
     return 0

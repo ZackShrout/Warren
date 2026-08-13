@@ -54,6 +54,8 @@ what the entry work demonstrates.
 
 ## Phase 0 — Foundation
 
+**Status:** Complete
+
 **Objective:** Agree on how Warren will make decisions and prove progress before
 creating architectural momentum in code.
 
@@ -69,10 +71,17 @@ Planned work:
 Completed foundation evidence:
 
 - reproducible macOS bootstrap with a compiled AArch64 probe;
+- machine-readable tool compatibility ranges, a last-known-good tuple, and
+  rejection tests for unsupported or internally mismatched tools;
 - hash-pinned, 25-header EDK2 ABI snapshot behind one Warren wrapper;
 - Clang/`lld-link` AArch64 UEFI application build;
-- deterministic FAT32 ESP construction; and
-- bounded QEMU UEFI smoke boot in debug and release profiles.
+- deterministic FAT32 ESP construction;
+- bounded QEMU UEFI smoke boot in debug and release profiles;
+- accepted boot-information 1.0 byte layout with C/C++ host and AArch64 ABI
+  checks plus independent valid and malformed fixtures;
+- accepted 48-bit AArch64 virtual layout with a bounded identity-to-higher-half
+  transition contract; and
+- accepted serial/semihosting result grammar with a tested host classifier.
 
 Exit gates:
 
@@ -82,6 +91,8 @@ Exit gates:
 - the First Light test protocol has explicit success and failure signals.
 
 ## Phase 1 — First Light
+
+**Status:** Next active phase
 
 **Objective:** Boot Burrow reproducibly and make early failure observable.
 

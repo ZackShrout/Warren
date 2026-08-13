@@ -7,6 +7,8 @@ repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 formula_manifest="$script_dir/dependencies/macos-brew.txt"
 edk2_headers_script="$script_dir/dependencies/fetch_edk2_headers.sh"
 firmware_manifest="$script_dir/dependencies/qemu-firmware.sha256"
+toolchain_baseline="$script_dir/dependencies/ToolchainBaseline.cmake"
+toolchain_version_checker="$script_dir/dependencies/check_tool_versions.cmake"
 mode=check
 
 say()
@@ -153,6 +155,7 @@ write_local_configuration()
         say "UEFI code SHA-256: $(shasum -a 256 "$uefi_code_path" | awk '{ print $1 }')"
         say "UEFI vars SHA-256: $(shasum -a 256 "$uefi_vars_path" | awk '{ print $1 }')"
         say "EDK2 headers: $edk2_root"
+        say "Compatibility baseline: $toolchain_baseline"
     } > "$report_tmp"
 
     mv "$cmake_paths_tmp" "$local_state_dir/ToolchainPaths.cmake"
@@ -185,6 +188,8 @@ fi
 [ "$(uname -s)" = Darwin ] || fail "the initial bootstrap supports macOS only"
 [ -f "$formula_manifest" ] || fail "dependency manifest is missing: $formula_manifest"
 [ -f "$firmware_manifest" ] || fail "QEMU firmware integrity manifest is missing: $firmware_manifest"
+[ -f "$toolchain_baseline" ] || fail "toolchain compatibility baseline is missing: $toolchain_baseline"
+[ -f "$toolchain_version_checker" ] || fail "toolchain version checker is missing: $toolchain_version_checker"
 [ -x "$edk2_headers_script" ] || fail "EDK2 header acquisition script is missing or not executable"
 
 command -v brew >/dev/null 2>&1 || fail "Homebrew is required for --check/--install; install it from https://brew.sh and rerun"
@@ -233,6 +238,25 @@ require_executable "$mformat_path" "mformat"
 require_executable "$mmd_path" "mmd"
 require_executable "$mcopy_path" "mcopy"
 require_executable "$qemu_path" "qemu-system-aarch64"
+
+cmake_version=$("$cmake_path" --version | sed -nE '1s/^cmake version ([0-9]+(\.[0-9]+)+).*$/\1/p')
+ninja_version=$("$ninja_path" --version | sed -nE '1s/^([0-9]+(\.[0-9]+)+).*$/\1/p')
+llvm_version=$("$clang_path" --version | sed -nE '1s/.*version ([0-9]+(\.[0-9]+)+).*$/\1/p')
+lld_version=$("$ld_lld_path" --version | sed -nE '1s/.*LLD ([0-9]+(\.[0-9]+)+).*$/\1/p')
+qemu_version=$("$qemu_path" --version | sed -nE '1s/.*version ([0-9]+(\.[0-9]+)+).*$/\1/p')
+mtools_version=$("$mformat_path" -V 2>&1 | sed -nE '1s/.*mtools\) ([0-9]+(\.[0-9]+)+).*$/\1/p')
+python_version=$("$python_path" --version 2>&1 | sed -nE '1s/^Python ([0-9]+(\.[0-9]+)+).*$/\1/p')
+
+"$cmake_path" \
+    -DWARREN_BASELINE_FILE="$toolchain_baseline" \
+    -DWARREN_ACTUAL_CMAKE="$cmake_version" \
+    -DWARREN_ACTUAL_NINJA="$ninja_version" \
+    -DWARREN_ACTUAL_LLVM="$llvm_version" \
+    -DWARREN_ACTUAL_LLD="$lld_version" \
+    -DWARREN_ACTUAL_QEMU="$qemu_version" \
+    -DWARREN_ACTUAL_MTOOLS="$mtools_version" \
+    -DWARREN_ACTUAL_PYTHON="$python_version" \
+    -P "$toolchain_version_checker"
 
 uefi_code_path=$(first_existing_file \
     "$qemu_root/share/qemu/edk2-aarch64-code.fd" \

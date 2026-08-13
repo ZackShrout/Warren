@@ -33,8 +33,10 @@ ADR-0006 records the CMake/Ninja and LLVM direction. The first verified toolchai
 baseline is CMake 4.2.3, Ninja 1.13.2, LLVM/LLD 22.1.8, QEMU 11.0.3, mtools
 4.0.49, and Python 3.14.6 on an ARM Mac. Homebrew remains the distribution
 channel; the bootstrap report records the exact resolved versions on every
-machine. The build may not depend on Xcode's implicit platform target, SDK,
-linker defaults, or system headers.
+machine. ADR-0014 defines supported major/minor ranges separately from this
+last-known-good tuple; bootstrap rejects out-of-range versions and LLVM/LLD
+mismatches before functional probes. The build may not depend on Xcode's
+implicit platform target, SDK, linker defaults, or system headers.
 
 ## Required Developer Interfaces
 
@@ -84,6 +86,9 @@ The stable developer commands are:
 
 ```sh
 ./tools/bootstrap.sh --check
+cmake --preset host-debug
+cmake --build --preset host-debug
+ctest --preset host-debug
 cmake --preset uefi-aarch64-debug
 cmake --build --preset uefi-aarch64-debug
 ctest --preset uefi-aarch64-debug
@@ -92,7 +97,10 @@ ctest --preset uefi-aarch64-debug
 Use the `uefi-aarch64-release` preset for the matching optimized build and smoke
 test. `cmake --build build/uefi-aarch64-debug --target run-uefi` is a convenient
 combined build-and-run front door. CTest verifies both a real QEMU boot and
-byte-for-byte reproducible ESP construction.
+byte-for-byte reproducible ESP construction. The host profile proves the
+boot-information ABI from C and C++, runs independent malformed-object fixtures,
+tests the serial result parser/classifier, and exercises positive and negative
+toolchain-baseline cases.
 
 ## Build Trees And Artifacts
 
@@ -100,6 +108,7 @@ Build outputs remain outside source directories. A conventional local layout is:
 
 ```text
 build/
+  host-debug/
   aarch64-debug/
   aarch64-release/
   uefi-aarch64-debug/
@@ -195,10 +204,18 @@ uncontrolled compile definitions.
 Target-only behavior runs in QEMU. A test boot has:
 
 - a fixed timeout;
-- a unique start marker;
-- explicit pass, fail, panic, and timeout classifications;
+- exactly one versioned test invocation and unique identifier;
+- strict `BEGIN`, `PASS`, `FAIL`, and `PANIC` serial records;
+- an agreed serial result and test-only semihosting process status;
+- distinct pass, explicit-failure, panic/assertion, protocol-error, QEMU-failure,
+  and timeout classifications;
 - serial logs retained on failure; and
-- a host-visible exit transport selected during Phase 0.
+- no semihosting support in production or interactive artifacts.
+
+The exact ASCII grammar, guest codes, host statuses, ordering, and disagreement
+precedence are fixed in `specifications/TEST_RESULT_PROTOCOL_V1.md`. The current
+UEFI scaffold uses that serial grammar with firmware shutdown but does not claim
+the later two-channel Burrow result contract.
 
 ### Interactive tests
 
@@ -242,9 +259,10 @@ should be:
 2. configure from a clean build tree;
 3. build host tools and host tests;
 4. run host tests;
-5. build AArch64 debug and release images;
-6. run bounded QEMU smoke tests for each; and
-7. retain logs, maps, and images for failed runs.
+5. compile the canonical declarations for bare AArch64 debug and release;
+6. build UEFI AArch64 debug and release images;
+7. run bounded QEMU and reproducibility tests for both; and
+8. retain logs, maps, and images for failed runs.
 
 The future x86-64 checkpoint joins this matrix without making every experimental
 platform a required gate.
