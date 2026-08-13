@@ -1,0 +1,11 @@
+# Warren host dependencies installed through Homebrew on macOS.
+#
+# Keep one formula per line. The bootstrap script verifies the actual tools and
+# records resolved versions after installation; this file is not itself a lock.
+cmake
+ninja
+llvm
+lld
+mtools
+python@3.14
+qemu

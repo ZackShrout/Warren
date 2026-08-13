@@ -1,0 +1,107 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja"
+    },
+    {
+      "name": "host-debug",
+      "displayName": "Warren host tools — Debug",
+      "description": "Configure Warren-owned macOS host tools and host tests.",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/host-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "aarch64-debug",
+      "displayName": "Warren AArch64 — Debug",
+      "description": "Configure the freestanding AArch64 Warren target.",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/aarch64-debug",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/AArch64Warren.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "aarch64-release",
+      "displayName": "Warren AArch64 — Release",
+      "description": "Configure the freestanding AArch64 Warren target.",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/aarch64-release",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/AArch64Warren.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "uefi-aarch64-debug",
+      "displayName": "Warren UEFI AArch64 — Debug",
+      "description": "Build the Warren AArch64 UEFI bootloader and EFI System Partition.",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/uefi-aarch64-debug",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/AArch64Uefi.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "uefi-aarch64-release",
+      "displayName": "Warren UEFI AArch64 — Release",
+      "description": "Build the Warren AArch64 UEFI bootloader and EFI System Partition.",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/uefi-aarch64-release",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/AArch64Uefi.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "host-debug",
+      "configurePreset": "host-debug"
+    },
+    {
+      "name": "aarch64-debug",
+      "configurePreset": "aarch64-debug"
+    },
+    {
+      "name": "aarch64-release",
+      "configurePreset": "aarch64-release"
+    },
+    {
+      "name": "uefi-aarch64-debug",
+      "configurePreset": "uefi-aarch64-debug"
+    },
+    {
+      "name": "uefi-aarch64-release",
+      "configurePreset": "uefi-aarch64-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "uefi-aarch64-debug",
+      "configurePreset": "uefi-aarch64-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "uefi-aarch64-release",
+      "configurePreset": "uefi-aarch64-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

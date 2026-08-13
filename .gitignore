@@ -1,0 +1,20 @@
+# macOS and editor-local state
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Python host-tool caches
+__pycache__/
+*.py[cod]
+
+# Local build trees and generated compilation database
+build/
+cmake-build-*/
+compile_commands.json
+
+# Local developer presets may contain machine-specific paths
+CMakeUserPresets.json
+
+# Bootstrap-generated, machine-local toolchain paths and reports
+.warren/
