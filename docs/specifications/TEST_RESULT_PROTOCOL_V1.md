@@ -202,19 +202,20 @@ The harness prints captured output and its classification on every non-pass
 path. It preserves the guest result code as diagnostic metadata even though the
 harness status reports the broader class.
 
-## 9. Current UEFI Pipeline Compatibility
+## 9. Current UEFI Loader Compatibility
 
-The pre-Burrow UEFI smoke image conforms to the serial record syntax and emits:
+The combined UEFI loader image conforms to the serial record syntax and emits:
 
 ```text
-WARREN_TEST:1:BEGIN:uefi-first-light
-WARREN_TEST:1:PASS:uefi-first-light
+WARREN_TEST:1:BEGIN:burrow-loader
+WARREN_TEST:1:PASS:burrow-loader
 ```
 
-Its current host check additionally requires a clean firmware-driven QEMU
-shutdown. It does not enable semihosting and therefore does not claim to prove
-the two-channel Phase 1 contract. The shared serial parser and ordering tests may
-still be used so the scaffold cannot drift into a conflicting marker format.
+The pass appears only after the packaged runtime ELF has been opened, validated,
+allocated, copied, zero-filled, and relocated. The host additionally requires a
+clean firmware-driven QEMU shutdown. This path does not enable semihosting and
+therefore does not claim the two-channel Phase 1 contract. The focused UEFI-only
+ESP contains no Burrow payload and has no successful system-boot marker.
 
 ## 10. Required Verification
 

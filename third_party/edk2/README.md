@@ -15,7 +15,7 @@ authoritative UEFI ABI declarations for its bootloader.
 are extracted into `.warren/dependencies/edk2-<commit>/` by
 `tools/dependencies/fetch_edk2_headers.sh`.
 
-The snapshot contains 25 headers. The upstream archive is cached locally after
+The snapshot contains 28 headers. The upstream archive is cached locally after
 verification, so subsequent bootstrap checks and installs can operate offline.
 
 ## Allowed Use

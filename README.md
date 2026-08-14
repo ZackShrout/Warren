@@ -6,13 +6,13 @@ x86-64 port, and ultimately aims to support native software development on
 Warren itself.
 
 Warren has completed **Phase 0: Foundation** and begun **Phase 1: First Light**.
-The repository now builds and audits Burrow's first AArch64 ELF image, keeps a
-symbol-bearing copy, packages a debug-stripped runtime copy beside Warren's UEFI
-bootloader, and proves the combined EFI System Partition is reproducible. The
-bootloader does not yet open, load, or execute Burrow; QEMU still proves only
-the existing firmware pipeline. Phase 0's toolchain, boot-information,
-virtual-memory, and test-result contracts remain accepted and backed by host
-and cross-target checks.
+The repository builds and independently audits Burrow's AArch64 ELF image, then
+packages its debug-stripped runtime copy beside Warren's UEFI bootloader. The
+bootloader opens that exact packaged file from its own boot device, validates it
+with Warren-owned production C++, allocates firmware-selected pages, copies and
+zero-fills the load image, and applies the permitted relative relocations. QEMU
+proves the resulting live physical extent and relocated entry before firmware
+shutdown. Burrow is loaded but is not executed, and boot services remain active.
 
 ## Project Vocabulary
 
@@ -96,9 +96,12 @@ ctest --preset system-aarch64-debug
 The build keeps Burrow and UEFI in separate compiler environments, then places
 `BOOTAA64.EFI` and `BURROW.ELF` into the 64 MiB
 `build/system-aarch64-debug/artifacts/warren-system-esp.img`. CTest extracts and
-compares both packaged payloads, rebuilds the ESP twice for byte equality, and
-boots it on the pinned QEMU machine. Matching `BEGIN` and `PASS` records for
-`uefi-first-light` require clean firmware shutdown but do not claim Burrow ran.
+compares both packaged payloads, rebuilds the ESP twice for byte equality, runs
+the production loader against the generated runtime ELF on the host, and boots
+it on the pinned QEMU machine. Matching `BEGIN` and `PASS` records for
+`burrow-loader` require successful file access, validation, allocation,
+materialization, and clean firmware shutdown. They do not claim that Burrow ran
+or that boot services ended.
 
 The `aarch64-debug` and `uefi-aarch64-debug` presets remain available for
 focused product builds. The Burrow, UEFI, and system profiles each have a

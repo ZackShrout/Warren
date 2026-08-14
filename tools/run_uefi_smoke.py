@@ -14,15 +14,13 @@ import tempfile
 from warren_test_protocol import HostClassification, classify_process_result
 
 
-EXPECTED_TEST_IDENTIFIER = "uefi-first-light"
-
-
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--qemu", required=True, type=pathlib.Path)
     parser.add_argument("--firmware-code", required=True, type=pathlib.Path)
     parser.add_argument("--firmware-vars", required=True, type=pathlib.Path)
     parser.add_argument("--esp", required=True, type=pathlib.Path)
+    parser.add_argument("--expected-test", required=True)
     parser.add_argument("--timeout", type=float, default=30.0)
     return parser.parse_args()
 
@@ -85,7 +83,7 @@ def main() -> int:
     protocol_result = classify_process_result(result.stdout, result.returncode)
     if (
         protocol_result.classification is not HostClassification.PASS
-        or protocol_result.test_identifier != EXPECTED_TEST_IDENTIFIER
+        or protocol_result.test_identifier != arguments.expected_test
     ):
         print(
             f"UEFI smoke classification: {protocol_result.classification.value}: "

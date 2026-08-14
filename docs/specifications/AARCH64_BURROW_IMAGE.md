@@ -7,14 +7,15 @@ ADR-0016
 
 ## 1. Purpose And Scope
 
-This specification records the build-time and packaging contract for Burrow's
-initial AArch64 image. It governs the ELF emitted by Clang and LLD, the
-Warren-owned host verifier, the distinction between symbol and runtime copies,
-and the image's location in the combined EFI System Partition.
+This specification records the build-time, packaging, and production-loading
+contract for Burrow's initial AArch64 image. It governs the ELF emitted by Clang
+and LLD, the independent Warren-owned artifact verifier, the production C++
+reader and materializer, the distinction between symbol and runtime copies, and
+the image's location in the combined EFI System Partition.
 
-It does not specify the production UEFI ELF parser, physical allocation,
-loading, zero-filling, relocation application, boot information, or transfer of
-control. The current bootloader does not open or execute the image.
+It does not specify boot information, the final firmware memory map,
+`ExitBootServices()`, instruction-cache synchronization for entry, or transfer
+of control. The current bootloader loads but does not execute the image.
 
 ## 2. ELF Identity
 
@@ -135,7 +136,80 @@ content requires runtime relocation, the complete table is described by one
 `SHT_REL`, RELR, PLT relocations, text relocations, symbol-bearing relocations,
 and any other AArch64 relocation type are rejected.
 
-## 6. Symbols And Forbidden Runtime Surface
+## 6. Production Reader And Load Plan
+
+The production loader accepts a bounded random-access byte source containing an
+exact 64-bit byte count and one exact-read callback. It includes no EFI or hosted
+C++ declaration. Every multibyte field is decoded explicitly as little-endian;
+the implementation does not cast file bytes to native ELF structures.
+
+The reader accepts at most 16 program headers and produces one canonical,
+fixed-capacity plan only after all validation succeeds. The plan records the
+source size, the R/RX/RW segments in permission order, the page-rounded
+allocation size, ELF-relative entry, writable dynamic range, and optional Rela
+table. Section headers, debug sections, and symbols are deliberately not read by
+production code.
+
+In addition to the identity and load rules above, production validation
+requires:
+
+- exactly three nonempty `PT_LOAD` entries with exact R, RX, and RW flags,
+  `p_align = 0x1000`, page-aligned and congruent file/virtual starts, equal
+  physical and virtual addresses, page-disjoint memory and file ranges, and a
+  first R load beginning at zero and containing the complete program table;
+- exactly one nonempty `PT_DYNAMIC`, represented by identical file and memory
+  sizes, aligned to at least eight bytes, and wholly contained by file-backed
+  writable storage;
+- no program type except `PT_NULL`, `PT_LOAD`, `PT_DYNAMIC`, `PT_PHDR`,
+  `PT_GNU_RELRO`, and non-executable `PT_GNU_STACK`;
+- a dynamic table terminated by `DT_NULL`, with duplicate tags rejected;
+- only the benign `DT_HASH`, `DT_GNU_HASH`, `DT_STRTAB`, `DT_STRSZ`, `DT_SYMTAB`,
+  and 24-byte `DT_SYMENT` metadata, optional zero-valued `DT_FLAGS`, and the
+  complete Rela trio; and
+- rejection of every interpreter, needed library, PLT, REL, RELR, text
+  relocation, initialization, finalization, binding, search-path, or unknown
+  dynamic request.
+
+The relocation table must be nonempty when described, contain no more than 256
+entries, use 24-byte entries, be wholly file-backed by one load, and contain
+only symbol-zero `R_AARCH64_RELATIVE`. Targets are unique, eight-byte aligned,
+and wholly inside writable storage. Addends are nonnegative and name bytes in
+one of the three loaded memory ranges.
+
+The loader reports narrow stable error values for identity, header, segment,
+dynamic, relocation, source-read, destination, load-bias, and physical-overflow
+failures. It never returns a partial plan or loaded-image result as success.
+
+## 7. Allocation And Materialization
+
+After planning succeeds, UEFI requests one `AllocateAnyPages` extent using
+`EfiLoaderData`. The page count is derived from the checked page-rounded span;
+the firmware-selected physical start is the load bias because the ELF-relative
+image begins at zero. No fixed physical address is selected.
+
+The shared materializer requires an exact 4 KiB-aligned destination span and an
+aligned physical base. It zeroes the complete allocation, copies every
+file-backed load to its virtual-address-relative offset, and then writes each
+relocated value as `load_bias + addend` with explicit little-endian bytes. It
+returns the physical start and size, load bias, and `load_bias + e_entry` only
+after all reads and writes succeed. The permission classes are retained in the
+plan for later page-table work; firmware mappings do not enforce the final
+R/RX/RW policy in this slice.
+
+The UEFI boundary opens the loaded-image protocol on its own image handle, opens
+the simple filesystem on that image's device, and opens only
+`\\EFI\\WARREN\\BURROW.ELF`. It obtains regular-file size through `EFI_FILE_INFO`
+and implements positioned exact reads with explicit bounds, EFI error,
+short-progress, zero-progress, and `UINTN` handling. All files and protocols are
+closed on every returning path. A failure after allocation clears the partial
+extent and frees its pages. A successful extent remains allocated until the
+firmware shutdown used by this branch.
+
+The bootloader supplies its own minimal `memcpy` and `memset` definitions for
+compiler-emitted aggregate operations and otherwise links with no imports. No
+EDK2 library, allocator, formatting library, or hosted runtime participates.
+
+## 8. Symbols And Forbidden Runtime Surface
 
 At least one symbol table remains so the verifier can prove the architecture
 entry definition. Symbol table entry zero is null. No non-null symbol is
@@ -149,7 +223,7 @@ machinery, global constructor support, allocation operators, unwinding,
 compiler arithmetic helpers, libc allocation and memory routines, and stack
 protector helpers.
 
-## 7. Build Artifacts
+## 9. Build Artifacts
 
 Each `aarch64-debug` and `aarch64-release` build emits:
 
@@ -171,20 +245,23 @@ header table and every other byte in every `PT_LOAD` must remain identical.
 Disassembly is opt-in through the `BurrowDisassembly` target and is not a
 generated source artifact.
 
-## 8. Host Verification
+## 10. Host Verification
 
 `tools/verify_burrow_image.py` reads little-endian structures directly from
 bytes using only the Python standard library. Every header, table, segment,
 section, string, symbol, dynamic entry, and relocation read is bounded before
 use. The tool is an artifact gate and is not production loader code.
 
-Generated host fixtures cover a valid relative-relocation image, a valid
-zero-relocation image, truncation, arithmetic overflow, identity, entry, bounds,
-alignment, overlap, permissions, dynamic metadata, forbidden sections and
-symbols, relocation type/target/addend, and runtime-copy differences. The audit
-runs as a build dependency for both symbol and runtime images.
+Generated Python fixtures cover the build-time artifact surface, including
+sections and symbols. Independent C++ fixtures exercise the actual production
+reader and materializer with zero, one, and multiple relocations, injected
+physical bases, exact copies, BSS and gap zeroing, malformed headers, segment
+and dynamic metadata, relocation type/symbol/target/addend errors, duplicate
+targets, failed reads, destination errors, and arithmetic overflow. The system
+profiles also pass their generated runtime ELF through the production loader on
+the host before QEMU boots the same packaged bytes.
 
-## 9. Combined ESP Packaging
+## 11. Combined ESP Packaging
 
 The system profiles build Burrow and UEFI as isolated child products:
 
@@ -204,8 +281,12 @@ The ESP builder accepts each input explicitly, rejects missing or repeated
 Burrow inputs, and normalizes every staged file and directory timestamp to
 2000-01-01 00:00:00 UTC. Tests extract both files and require byte identity with
 the selected inputs, build the combined image twice and require identical
-SHA-256 bytes, and boot it through the unchanged UEFI smoke path.
+SHA-256 bytes, exercise the generated ELF through production C++, and boot the
+same ESP through UEFI.
 
-That QEMU pass proves only that packaging Burrow did not regress the existing
-firmware pipeline. It is not evidence that the bootloader parsed, loaded,
-relocated, or entered Burrow.
+The combined QEMU path emits `BEGIN:burrow-loader`, one bounded diagnostic with
+the live physical start, size, load bias, and relocated entry, and then
+`PASS:burrow-loader` before `ResetSystem()`. This proves firmware file I/O and
+allocation reached a validated loaded-image state. It is not evidence that
+Burrow executed, boot services ended, boot information was constructed, final
+segment permissions were installed, or the handoff contract was established.

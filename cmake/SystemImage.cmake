@@ -31,6 +31,7 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "^(Debug|Release)$")
 endif()
 
 set(_warren_product_root "${CMAKE_CURRENT_BINARY_DIR}/products")
+set(_warren_host_build "${_warren_product_root}/host")
 set(_warren_burrow_build "${_warren_product_root}/burrow")
 set(_warren_uefi_build "${_warren_product_root}/uefi")
 set(_warren_artifact_directory "${CMAKE_CURRENT_BINARY_DIR}/artifacts")
@@ -38,6 +39,7 @@ set(_warren_burrow_image "${_warren_burrow_build}/artifacts/burrow-runtime.elf")
 set(_warren_burrow_symbols "${_warren_burrow_build}/artifacts/burrow.elf")
 set(_warren_burrow_map "${_warren_burrow_build}/artifacts/burrow.map")
 set(_warren_bootloader "${_warren_uefi_build}/artifacts/BOOTAA64.EFI")
+set(_warren_loader_test "${_warren_host_build}/WarrenBurrowLoaderTests")
 set(_warren_esp "${_warren_artifact_directory}/warren-system-esp.img")
 
 add_custom_target(WarrenSystemBurrow
@@ -56,6 +58,22 @@ add_custom_target(WarrenSystemBurrow
         "${_warren_burrow_image}"
         "${_warren_burrow_symbols}"
         "${_warren_burrow_map}"
+    USES_TERMINAL
+    VERBATIM
+)
+
+add_custom_target(WarrenSystemHostLoader
+    COMMAND "${CMAKE_COMMAND}"
+        -S "${CMAKE_CURRENT_SOURCE_DIR}"
+        -B "${_warren_host_build}"
+        -G Ninja
+        -DCMAKE_MAKE_PROGRAM=${WARREN_HOST_NINJA}
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DWARREN_BUILD_ENVIRONMENT=host
+    COMMAND "${CMAKE_COMMAND}"
+        --build "${_warren_host_build}"
+        --target WarrenBurrowLoaderTests
+    BYPRODUCTS "${_warren_loader_test}"
     USES_TERMINAL
     VERBATIM
 )
@@ -96,7 +114,15 @@ add_custom_command(
     VERBATIM
 )
 
-add_custom_target(WarrenSystemImage ALL DEPENDS "${_warren_esp}")
+add_custom_target(WarrenSystemImage ALL DEPENDS
+    "${_warren_esp}"
+    WarrenSystemHostLoader
+)
+
+add_test(
+    NAME WarrenSystemBurrowProductionLoader
+    COMMAND "${_warren_loader_test}" "${_warren_burrow_image}"
+)
 
 add_test(
     NAME WarrenSystemEspContents
@@ -122,15 +148,16 @@ add_test(
 set_tests_properties(WarrenSystemEspReproducibility PROPERTIES TIMEOUT 20)
 
 add_test(
-    NAME WarrenSystemUefiFirstLight
+    NAME WarrenSystemBurrowLoader
     COMMAND "${WARREN_HOST_PYTHON}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_uefi_smoke.py"
         --qemu "${WARREN_QEMU_AARCH64}"
         --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_esp}"
+        --expected-test burrow-loader
 )
-set_tests_properties(WarrenSystemUefiFirstLight PROPERTIES TIMEOUT 40)
+set_tests_properties(WarrenSystemBurrowLoader PROPERTIES TIMEOUT 40)
 
 unset(_required_path)
 unset(_warren_artifact_directory)
@@ -141,5 +168,7 @@ unset(_warren_burrow_map)
 unset(_warren_burrow_symbols)
 unset(_warren_esp)
 unset(_warren_local_paths)
+unset(_warren_host_build)
+unset(_warren_loader_test)
 unset(_warren_product_root)
 unset(_warren_uefi_build)

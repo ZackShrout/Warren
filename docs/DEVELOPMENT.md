@@ -76,11 +76,11 @@ lack a trustworthy binary distribution, with pinned sources and checksums.
 
 EDK2 ABI headers are the bounded exception to the system-package path. Bootstrap
 downloads one immutable upstream archive, verifies its SHA-256, and extracts
-only the 25 individually hashed files on the checked-in allowlist. QEMU's UEFI
+only the 28 individually hashed files on the checked-in allowlist. QEMU's UEFI
 code and variable-store images are also verified against a checked-in integrity
 manifest before any build paths are generated.
 
-## Current Burrow Image Slice
+## Current Burrow Loader Slice
 
 The stable combined developer commands are:
 
@@ -101,12 +101,14 @@ their verified outputs. It does not compile either product using the other's
 environment.
 
 CTest extracts the bootloader and runtime ELF from the combined ESP and compares
-their bytes to the selected inputs, proves complete ESP reproducibility, and
-runs the existing QEMU UEFI smoke test. That smoke result does not mean the
-bootloader opened or executed Burrow. The host profile tests the ELF verifier's
-generated valid and malformed fixtures, ESP input failures, the boot-information
-ABI, the serial result parser/classifier, and positive and negative
-toolchain-baseline cases.
+their bytes to the selected inputs, proves complete ESP reproducibility,
+materializes the generated runtime ELF through the production C++ loader on the
+host, and runs the combined `burrow-loader` QEMU test. The firmware result proves
+fixed-path file access, loader validation, allocation, copying, zero-fill, and
+relocation before clean shutdown. It does not mean Burrow executed, boot
+services ended, or boot information exists. The host profile also exercises
+independent malformed loader fixtures, the artifact verifier, ESP input
+failures, the boot-information ABI, the serial classifier, and toolchain gates.
 
 Focused profiles remain supported:
 
@@ -121,8 +123,9 @@ ctest --preset uefi-aarch64-debug
 
 `cmake --build build/aarch64-debug --target BurrowDisassembly` prints
 source-aware AArch64 disassembly without generating a persistent report.
-`cmake --build build/uefi-aarch64-debug --target run-uefi` remains the focused
-UEFI build-and-run front door.
+The focused UEFI ESP intentionally contains no Burrow payload, so its CTest
+surface audits structure and reproducibility rather than presenting a QEMU boot
+as successful. Use the combined system preset for the loader proof.
 
 ## Build Trees And Artifacts
 
@@ -136,6 +139,7 @@ build/
   uefi-aarch64-debug/
   uefi-aarch64-release/
   system-aarch64-debug/
+    products/host/
     products/burrow/
     products/uefi/
     artifacts/
@@ -246,8 +250,8 @@ Target-only behavior runs in QEMU. A test boot has:
 
 The exact ASCII grammar, guest codes, host statuses, ordering, and disagreement
 precedence are fixed in `specifications/TEST_RESULT_PROTOCOL_V1.md`. The current
-UEFI scaffold uses that serial grammar with firmware shutdown but does not claim
-the later two-channel Burrow result contract.
+combined loader proof uses that serial grammar with firmware shutdown but does
+not claim the later two-channel Burrow result contract.
 
 ### Interactive tests
 

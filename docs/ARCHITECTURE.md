@@ -1,15 +1,15 @@
 # Warren Architecture
 
-**Status:** Phase 0 contracts accepted; Phase 1 image production implemented
+**Status:** Phase 0 contracts accepted; Phase 1 image loading implemented
 
 **Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
 
 **Future target:** x86-64, selected only after the shared boundaries are proven
 
 This document describes the direction in which Warren begins. The UEFI
-first-light bootloader scaffold, canonical boot-information declarations and
-validators, host-side contract tests, and the first non-executed Burrow ELF
-image exist. Stable decisions are recorded in `docs/adr/`, and exact subordinate
+bootloader now loads—but does not enter—the audited Burrow ELF image. Canonical
+boot-information declarations and validators and host-side contract tests also
+exist. Stable decisions are recorded in `docs/adr/`, and exact subordinate
 formats live in `docs/specifications/`.
 
 ## Architectural Shape
@@ -94,12 +94,13 @@ header snapshot behind Warren-owned wrappers. No EDK2 build system, runtime,
 library, or driver participates in Warren's build. Clang and `lld-link` produce
 the AArch64 PE32+ `BOOTAA64.EFI` application.
 
-The implemented UEFI-only scaffold packages that application at the standard
-removable-media path `EFI/BOOT/BOOTAA64.EFI` in a deterministic FAT32 image. The
-combined system image additionally packages Burrow at
-`EFI/WARREN/BURROW.ELF`. It writes versioned `BEGIN` and `PASS` records through
-the UEFI console and requests firmware shutdown. The host parses the accepted
-record grammar, but this remains a pipeline proof rather than Burrow's eventual
+The focused UEFI product packages that application at the standard
+removable-media path `EFI/BOOT/BOOTAA64.EFI` in a deterministic FAT32 image. It
+contains no Burrow payload and is a structural and reproducibility surface, not
+a successful system boot. The combined system image additionally packages
+Burrow at `EFI/WARREN/BURROW.ELF`. Only that combined image owns the current
+`burrow-loader` QEMU result. The host parses the accepted record grammar, but
+firmware shutdown remains a compatibility transport rather than Burrow's later
 PL011 plus semihosting result transport.
 
 Burrow is built as a static position-independent ELF64 `ET_DYN` image with
@@ -110,11 +111,14 @@ sections, dynamic metadata, symbols, relocation policy, and packaging rules are
 specified in `specifications/AARCH64_BURROW_IMAGE.md` and enforced by an
 independent byte-level host verifier.
 
-The current bootloader does not open the packaged ELF. The next loader slice
-will locate, validate, allocate, load, zero-fill, and relocate it without
-transferring control. An early QEMU direct-load path remains permissible for
-experimentation if it produces the same handoff contract and does not leak into
-kernel core.
+The bootloader locates the packaged ELF only through the loaded-image device and
+fixed Warren path. An EFI-neutral bounded-byte reader validates the ELF64
+program headers, load classes, dynamic table, and optional relative-relocation
+table. Firmware chooses one contiguous page extent; the shared materializer
+zeroes it, copies the three loads, applies `R_AARCH64_RELATIVE`, and reports the
+physical extent, load bias, and relocated entry. It does not construct boot
+information, obtain the final memory map, call `ExitBootServices()`, install
+final permissions, or transfer control.
 
 ## Source Layout
 
@@ -123,7 +127,8 @@ enforced from the first build:
 
 ```text
 boot/
-  uefi/                 Warren bootloader
+  Loader/               EFI-neutral Burrow image parser and materializer
+  uefi/                 UEFI file, allocation, diagnostic, and entry stages
 kernel/
   include/burrow/       kernel-owned interfaces shared across modules
   src/Core/             kernel entry, panic, logging, fundamental support
