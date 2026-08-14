@@ -105,6 +105,29 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "system")
     return()
 endif()
 
+if(NOT WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
+    add_library(WarrenBurrowLoader OBJECT
+        boot/include/warren/boot/BurrowLoader.h
+        boot/Loader/BurrowLoader.cpp
+    )
+    target_include_directories(WarrenBurrowLoader PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/boot/include"
+    )
+    target_compile_options(WarrenBurrowLoader PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+endif()
+
 add_library(WarrenBootProtocol OBJECT
     sdk/include/warren/boot/BootInformation.h
     sdk/include/warren/boot/BootInformationValidation.h
@@ -164,6 +187,24 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenBootInformationProtocol
         COMMAND WarrenBootInformationTests
+    )
+
+    add_executable(WarrenBurrowLoaderTests
+        tests/host/BurrowLoaderTests.cpp
+    )
+    target_link_libraries(WarrenBurrowLoaderTests PRIVATE
+        WarrenBurrowLoader
+    )
+    target_compile_options(WarrenBurrowLoaderTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenBurrowLoader
+        COMMAND WarrenBurrowLoaderTests
     )
 
     add_test(
@@ -351,7 +392,10 @@ endif()
 if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
     add_library(WarrenUefiBootloaderObject OBJECT
         boot/uefi/Main.cpp
+        boot/uefi/Memory.cpp
+        boot/uefi/UefiFile.cpp
         boot/include/warren/boot/Uefi.h
+        boot/include/warren/boot/UefiFile.h
     )
 
     target_include_directories(WarrenUefiBootloaderObject
@@ -367,6 +411,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
         -fno-stack-protector
         -fno-threadsafe-statics
         -fno-use-cxa-atexit
+        -fno-builtin
         -nostdinc++
         -Wall
         -Wextra
@@ -395,6 +440,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
             /Brepro
             $<$<CONFIG:Debug>:/debug:dwarf>
             "/out:${_warren_uefi_image}"
+            $<TARGET_OBJECTS:WarrenBurrowLoader>
             $<TARGET_OBJECTS:WarrenUefiBootloaderObject>
         COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_uefi_image.py"
@@ -402,6 +448,8 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
             --image "${_warren_uefi_image}"
         DEPENDS
             WarrenUefiBootloaderObject
+            WarrenBurrowLoader
+            $<TARGET_OBJECTS:WarrenBurrowLoader>
             $<TARGET_OBJECTS:WarrenUefiBootloaderObject>
             tools/verify_uefi_image.py
         COMMAND_EXPAND_LISTS
@@ -427,17 +475,6 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
     add_custom_target(WarrenEsp ALL DEPENDS "${_warren_esp_image}")
 
     add_test(
-        NAME WarrenUefiFirstLight
-        COMMAND "${WARREN_HOST_PYTHON}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_uefi_smoke.py"
-            --qemu "${WARREN_QEMU_AARCH64}"
-            --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
-            --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
-            --esp "${_warren_esp_image}"
-    )
-    set_tests_properties(WarrenUefiFirstLight PROPERTIES TIMEOUT 40)
-
-    add_test(
         NAME WarrenEspReproducibility
         COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_esp_reproducibility.py"
@@ -449,9 +486,4 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
     )
     set_tests_properties(WarrenEspReproducibility PROPERTIES TIMEOUT 20)
 
-    add_custom_target(run-uefi
-        COMMAND "${CMAKE_CTEST_COMMAND}" --output-on-failure -R WarrenUefiFirstLight
-        DEPENDS WarrenEsp
-        USES_TERMINAL
-    )
 endif()

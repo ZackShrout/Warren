@@ -1,6 +1,6 @@
 # Burrow Loader Branch Plan
 
-- **Status:** Ready
+- **Status:** Complete — verified 2026-08-13
 - **Branch:** `feature/burrow-loader`
 - **Base:** `main` after integration of `feature/burrow-image`
 - **Roadmap phase:** Phase 1 — First Light

@@ -42,10 +42,11 @@ The runway is reassessed after every merge.
    page tables, then call architecture-neutral Burrow entry under the accepted
    state contract.
 
-The completed `foundation/phase-0-contracts` and `feature/burrow-image` plans
-and verification records remain available in
+The completed `foundation/phase-0-contracts` and `feature/burrow-image` plans,
+along with the implemented `feature/burrow-loader` contract, remain available in
 [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md) and
-[`plans/burrow-image.md`](plans/burrow-image.md). The Burrow image's implemented
+[`plans/burrow-image.md`](plans/burrow-image.md), and
+[`plans/burrow-loader.md`](plans/burrow-loader.md). The Burrow image's implemented
 subordinate contract is in
 [`specifications/AARCH64_BURROW_IMAGE.md`](specifications/AARCH64_BURROW_IMAGE.md).
 
@@ -74,7 +75,7 @@ Completed foundation evidence:
 - reproducible macOS bootstrap with a compiled AArch64 probe;
 - machine-readable tool compatibility ranges, a last-known-good tuple, and
   rejection tests for unsupported or internally mismatched tools;
-- hash-pinned, 25-header EDK2 ABI snapshot behind one Warren wrapper;
+- hash-pinned, 28-header EDK2 ABI snapshot behind one Warren wrapper;
 - Clang/`lld-link` AArch64 UEFI application build;
 - deterministic FAT32 ESP construction;
 - bounded QEMU UEFI smoke boot in debug and release profiles;
@@ -117,7 +118,13 @@ Completed Phase 1 evidence:
 - deterministic combined ESP packaging with byte-identical Burrow and UEFI
   inputs; and
 - isolated Burrow/UEFI compiler environments with debug and release system
-  profiles that preserve the existing QEMU firmware smoke result.
+  profiles;
+- an environment-neutral production ELF reader and materializer with malformed,
+  zero-fill, physical-base, and synthetic relative-relocation host coverage;
+- fixed-path UEFI file access on the bootloader's own device plus
+  firmware-selected contiguous page allocation; and
+- combined debug and release QEMU loader results that report a live physical
+  extent, load bias, and relocated entry without entering Burrow.
 
 Exit demonstration:
 

@@ -7,8 +7,7 @@
 
 #include <stdint.h>
 
-namespace warren::boot
-{
+namespace warren::boot {
     enum class boot_information_error_t : uint32_t
     {
         success = 0,
@@ -42,8 +41,6 @@ namespace warren::boot
         invalid_framebuffer = 28,
     };
 
-    [[nodiscard]] boot_information_error_t validate_boot_information(
-        const void* object,
-        uint32_t readable_size,
-        uint64_t physical_address) noexcept;
-}
+    [[nodiscard]] boot_information_error_t validate_boot_information(const void* object, uint32_t readable_size,
+                                                                     uint64_t physical_address) noexcept;
+} // namespace warren::boot
