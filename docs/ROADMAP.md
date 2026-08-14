@@ -36,7 +36,8 @@ The runway is reassessed after every merge.
    `ExitBootServices()`, establish the handoff contract, and enter Burrow's
    architecture assembly. A minimal platform diagnostic and test-only result
    transport provide unambiguous proof without pretending the full console or
-   normalized kernel entry is complete.
+   normalized kernel entry is complete. The complete plan is in
+   [`plans/burrow-first-entry.md`](plans/burrow-first-entry.md).
 3. **`feature/aarch64-normalized-entry` — reach kernel C++ at EL1.** Add emergency
    vectors, supported EL1/EL2 normalization, an owned transition stack and early
    page tables, then call architecture-neutral Burrow entry under the accepted
