@@ -131,7 +131,9 @@ endif()
 
 add_library(WarrenBootProtocol OBJECT
     sdk/include/warren/boot/BootInformation.h
+    sdk/include/warren/boot/BootInformationProducer.h
     sdk/include/warren/boot/BootInformationValidation.h
+    sdk/src/boot/BootInformationProducer.cpp
     sdk/src/boot/BootInformationValidation.cpp
 )
 target_include_directories(WarrenBootProtocol PUBLIC
@@ -188,6 +190,24 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenBootInformationProtocol
         COMMAND WarrenBootInformationTests
+    )
+
+    add_executable(WarrenBootInformationProducerTests
+        tests/host/BootInformationProducerTests.cpp
+    )
+    target_link_libraries(WarrenBootInformationProducerTests PRIVATE
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenBootInformationProducerTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenBootInformationProducer
+        COMMAND WarrenBootInformationProducerTests
     )
 
     add_executable(WarrenBurrowLoaderTests

@@ -191,6 +191,45 @@ it does not override `memory_kind`. Burrow allocation policy consumes the
 normalized Warren kind and only interprets source attributes through a handler
 for the declared source kind.
 
+### 6.1 UEFI Producer Translation
+
+The Warren UEFI producer translates every memory type in the pinned header
+baseline as follows. It retains the original numeric UEFI type and complete
+attribute mask in every resulting entry, including entries split by a live
+resource overlay.
+
+| UEFI type | Value | Warren memory kind |
+| --- | ---: | --- |
+| `EfiReservedMemoryType` | 0 | reserved |
+| `EfiLoaderCode` | 1 | loader reclaimable |
+| `EfiLoaderData` | 2 | loader reclaimable |
+| `EfiBootServicesCode` | 3 | firmware reclaimable |
+| `EfiBootServicesData` | 4 | firmware reclaimable |
+| `EfiRuntimeServicesCode` | 5 | firmware runtime |
+| `EfiRuntimeServicesData` | 6 | firmware runtime |
+| `EfiConventionalMemory` | 7 | usable |
+| `EfiUnusableMemory` | 8 | unusable |
+| `EfiACPIReclaimMemory` | 9 | ACPI reclaimable |
+| `EfiACPIMemoryNVS` | 10 | ACPI NVS |
+| `EfiMemoryMappedIO` | 11 | MMIO |
+| `EfiMemoryMappedIOPortSpace` | 12 | MMIO |
+| `EfiPalCode` | 13 | reserved |
+| `EfiPersistentMemory` | 14 | persistent |
+| `EfiUnacceptedMemoryType` | 15 | reserved |
+
+An unrecognized, OEM-reserved, or OS-reserved numeric source type causes
+production to fail rather than becoming usable memory. A later platform policy
+may explicitly classify such a type only after documenting its ownership and
+updating producer tests. Unaccepted memory remains reserved until a future
+owner implements and proves the platform's acceptance operation.
+
+The producer overlays the complete allocated page extents for the boot-
+information object, Burrow image, and bootstrap stack with their dedicated
+Warren kinds. An overlay may cross source-descriptor boundaries, but it must be
+fully covered without a gap and must not overlap another live resource. Splits
+are deterministic, and adjacent results coalesce only when the Warren kind,
+UEFI source type, and UEFI attributes all agree.
+
 ## 7. Command Line
 
 The command-line section has stride 1 and `count` equal to its byte length. Its
