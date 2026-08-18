@@ -235,18 +235,29 @@ Map acquisition and exit use an explicit bounded state machine:
 4. call `ExitBootServices()` with the key from that same snapshot without an
    intervening console write, allocation, free, protocol operation, or other
    boot-service call;
-5. on the UEFI-defined stale-key result, reacquire the map, rebuild and
+5. once any `ExitBootServices()` call returns, enter a restricted retry phase:
+   firmware may already be partially shut down, so the loader may use only UEFI
+   memory-allocation services needed to reacquire or resize the map plus another
+   `ExitBootServices()` attempt; it may not use console, protocol, event, image,
+   watchdog, or other boot services, and it may not use runtime services;
+6. on the UEFI-defined stale-key result, reacquire the map, rebuild and
    revalidate the object, and retry from the new key;
-6. if either buffer is too small, return to the pre-exit allocation stage,
-   resize with checked growth, and restart rather than truncating data; and
-7. on bounded exhaustion or another error while boot services remain active,
-   report a stable stage and use the existing firmware failure path.
+7. if either buffer is too small, resize it with checked growth and restart
+   rather than truncating data, while respecting the restricted phase after the
+   first exit attempt; and
+8. before the first exit attempt, report bounded exhaustion or another terminal
+   error through the existing firmware failure path; after the first attempt,
+   report only through the direct post-firmware PL011/test path when safe, then
+   terminate through test semihosting or enter a masked wait loop.
 
 The bootloader never retries using an old key or an object built from a
 different map. It never logs through UEFI between final capture and exit. Once
 `ExitBootServices()` succeeds, the code path is `[[noreturn]]`, firmware pointers
 are dead, cleanup and `ResetSystem()` are forbidden, and failures use only the
 minimal post-firmware platform/test facilities or a masked wait loop.
+An unsuccessful first exit attempt is also a one-way diagnostic boundary: even
+though the loader may perform the narrowly permitted memory-map retry work, it
+never returns to the ordinary UEFI console, cleanup, protocol, or reset path.
 
 ### 4. Cache Synchronization And Loader Handoff Stub
 
@@ -484,6 +495,10 @@ and run through the same host harness as the success path.
   documented retained-allocation shutdown path.
 - Every `ExitBootServices()` call uses the key and object built from the same
   final snapshot, with no intervening firmware operation and no stale-key reuse.
+- After the first `ExitBootServices()` attempt, no path reaches UEFI console,
+  protocol, event, image, watchdog, runtime-reset, cleanup, or general failure
+  helpers; only permitted memory-map retry services and another exit attempt
+  remain reachable before direct PL011/test failure or a masked wait loop.
 - No firmware service or firmware console call is reachable after a successful
   exit.
 - Executable loaded bytes receive the reviewed ARMv8.0-A cache synchronization
@@ -534,6 +549,13 @@ without losing the underlying UEFI metadata.
 After successful exit, a familiar console or reset helper becomes a dangling
 firmware dependency. The post-exit path must be visibly separate, nonreturning,
 and inspectable so no error path can wander back into UEFI.
+
+The first *attempt* is also a one-way boundary for ordinary firmware services.
+UEFI permits firmware to partially shut boot services down before returning a
+stale-map error. Retry code may reacquire the map, resize through memory-
+allocation services when required, rebuild the object, and call
+`ExitBootServices()` again, but it must not fall back to the existing UEFI
+console, protocol cleanup, runtime reset, or general failure helpers.
 
 ### Executing Newly Written Instructions
 
