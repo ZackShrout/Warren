@@ -108,11 +108,14 @@ endif()
 
 if(NOT WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     add_library(WarrenBurrowLoader OBJECT
+        boot/include/warren/boot/BootHandoffStorage.h
         boot/include/warren/boot/BurrowLoader.h
+        boot/Loader/BootHandoffStorage.cpp
         boot/Loader/BurrowLoader.cpp
     )
     target_include_directories(WarrenBurrowLoader PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/boot/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
     )
     target_compile_options(WarrenBurrowLoader PRIVATE
         -ffreestanding
@@ -226,6 +229,25 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenBurrowLoader
         COMMAND WarrenBurrowLoaderTests
+    )
+
+    add_executable(WarrenBootHandoffStorageTests
+        tests/host/BootHandoffStorageTests.cpp
+    )
+    target_link_libraries(WarrenBootHandoffStorageTests PRIVATE
+        WarrenBurrowLoader
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenBootHandoffStorageTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenBootHandoffStorage
+        COMMAND WarrenBootHandoffStorageTests
     )
 
     add_test(
@@ -414,7 +436,9 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
     add_library(WarrenUefiBootloaderObject OBJECT
         boot/uefi/Main.cpp
         boot/uefi/Memory.cpp
+        boot/uefi/UefiHandoffStorage.cpp
         boot/uefi/UefiFile.cpp
+        boot/include/warren/boot/UefiHandoffStorage.h
         boot/include/warren/boot/Uefi.h
         boot/include/warren/boot/UefiFile.h
     )

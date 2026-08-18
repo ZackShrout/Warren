@@ -230,6 +230,24 @@ fully covered without a gap and must not overlap another live resource. Splits
 are deterministic, and adjacent results coalesce only when the Warren kind,
 UEFI source type, and UEFI attributes all agree.
 
+The reference loader's storage plan is boot policy rather than protocol ABI. It
+reserves a zero-filled 64 KiB bootstrap stack and adds capacity for 32 UEFI
+descriptors beyond the first reported map size. Page rounding of the map buffer
+is included in the usable descriptor capacity. Producer work storage then
+allows two additional normalized entries for each of the three live resource
+overlays, and the contiguous protocol object is sized for that complete maximum
+plus the reference early-console record. Every size, count, multiplication,
+rounding operation, and conversion to a protocol-width field is checked before
+firmware allocation.
+
+The stack, memory-map buffer, producer work entries, and protocol object use
+separate loader-owned page allocations. They are zeroed before use and must be
+pairwise disjoint. Before the first `ExitBootServices()` attempt, partial
+allocation failure unwinds in reverse order. A failed free remains recorded so
+cleanup can be retried or the retained allocation can be reported before
+firmware-controlled termination; no such cleanup is permitted after the first
+exit attempt.
+
 ## 7. Command Line
 
 The command-line section has stride 1 and `count` equal to its byte length. Its
