@@ -42,7 +42,8 @@ The runway is reassessed after every merge.
 3. **Next — `feature/aarch64-normalized-entry`: reach kernel C++ at EL1.** Add
    emergency vectors, supported EL1/EL2 normalization, an owned transition stack
    and early page tables, then call architecture-neutral Burrow entry under the
-   accepted state contract.
+   accepted state contract. The ready plan is in
+   [`plans/aarch64-normalized-entry.md`](plans/aarch64-normalized-entry.md).
 
 The completed `foundation/phase-0-contracts`, `feature/burrow-image`,
 `feature/burrow-loader`, and `feature/burrow-first-entry` plans remain available
