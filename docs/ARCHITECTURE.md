@@ -102,6 +102,8 @@ a successful system boot. The combined system image additionally packages
 Burrow at `EFI/WARREN/BURROW.ELF`. Only that combined image owns the current
 `burrow-first-entry` QEMU result. Burrow emits the terminal serial record and
 uses the test-only semihosting exit; the host requires both channels to agree.
+Dedicated pass, explicit-failure, and panic Burrow children prove the transport
+without adding it to the ordinary kernel image.
 
 Burrow is built as a static position-independent ELF64 `ET_DYN` image with
 separate read-only, executable, and writable load pages. The current minimal

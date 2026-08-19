@@ -121,6 +121,16 @@ ENTRY_SYMBOL = "burrow_aarch64_entry"
 QEMU_SEMIHOST_HLT = bytes.fromhex("00005ed4")
 QEMU_PASS_MARKER = b"WARREN_TEST:1:PASS:burrow-first-entry\r\n\0"
 QEMU_EXIT_ARGUMENTS = struct.pack("<QQ", 0x20026, 0)
+QEMU_RESULT_MARKERS = {
+    "pass": QEMU_PASS_MARKER,
+    "fail": b"WARREN_TEST:1:FAIL:burrow-first-entry:64\r\n\0",
+    "panic": b"WARREN_TEST:1:PANIC:burrow-first-entry:2\r\n\0",
+}
+QEMU_RESULT_ARGUMENTS = {
+    "pass": QEMU_EXIT_ARGUMENTS,
+    "fail": struct.pack("<QQ", 0x20026, 64),
+    "panic": struct.pack("<QQ", 0x20026, 2),
+}
 
 _FORBIDDEN_PROGRAM_TYPES = {
     PROGRAM_TYPE_INTERPRETER: "PT_INTERP",
@@ -973,21 +983,30 @@ def _validate_qemu_test_result_transport(
     reader: Reader,
     loads: list[ProgramHeader],
     *,
-    enabled: bool,
+    mode: str | None,
 ) -> None:
     loaded_bytes = b"".join(
         reader.range(load.offset, load.file_size, f"PT_LOAD {load.index}")
         for load in loads
     )
-    expected_count = 1 if enabled else 0
-    for payload, description in (
-        (QEMU_SEMIHOST_HLT, "QEMU semihost HLT"),
-        (QEMU_PASS_MARKER, "QEMU pass marker"),
-        (QEMU_EXIT_ARGUMENTS, "QEMU exit argument block"),
-    ):
-        count = loaded_bytes.count(payload)
-        if count != expected_count:
-            requirement = "exactly once" if enabled else "absent"
+    hlt_count = loaded_bytes.count(QEMU_SEMIHOST_HLT)
+    expected_hlt_count = 1 if mode is not None else 0
+    if hlt_count != expected_hlt_count:
+        requirement = "exactly once" if mode is not None else "absent"
+        raise VerificationError(
+            f"QEMU semihost HLT must be {requirement}, found {hlt_count}"
+        )
+
+    for result_mode in QEMU_RESULT_MARKERS:
+        expected_count = 1 if mode == result_mode else 0
+        requirement = "exactly once" if expected_count == 1 else "absent"
+        for payload, description in (
+            (QEMU_RESULT_MARKERS[result_mode], f"QEMU {result_mode} marker"),
+            (QEMU_RESULT_ARGUMENTS[result_mode], f"QEMU {result_mode} argument block"),
+        ):
+            count = loaded_bytes.count(payload)
+            if count == expected_count:
+                continue
             raise VerificationError(
                 f"{description} must be {requirement}, found {count}"
             )
@@ -997,7 +1016,7 @@ def verify_image(
     image: bytes,
     *,
     runtime: bool = False,
-    qemu_test_result: bool = False,
+    qemu_test_result: str | None = None,
 ) -> ImageSummary:
     """Verify one complete Burrow image and return its audited shape."""
 
@@ -1013,7 +1032,7 @@ def verify_image(
         reader, program_headers, sections, loads
     )
     _validate_qemu_test_result_transport(
-        reader, loads, enabled=qemu_test_result
+        reader, loads, mode=qemu_test_result
     )
     return ImageSummary(
         entry=header.entry,
@@ -1028,7 +1047,7 @@ def verify_runtime_copy(
     symbol_image: bytes,
     runtime_image: bytes,
     *,
-    qemu_test_result: bool = False,
+    qemu_test_result: str | None = None,
 ) -> None:
     """Require debug stripping to preserve every loader-visible byte."""
 
@@ -1088,7 +1107,7 @@ def verify_first_entry_disassembly(
     objdump: pathlib.Path,
     image: pathlib.Path,
     *,
-    qemu_test_result: bool,
+    qemu_test_result: str | None,
 ) -> None:
     result = subprocess.run(
         [
@@ -1149,24 +1168,75 @@ def verify_first_entry_disassembly(
            for register in forbidden_registers):
         raise VerificationError("Burrow first entry modifies normalization state")
 
-    hlt_instructions = [
-        instruction for instruction in instructions if instruction.startswith("hlt")
-    ]
-    expected_hlt = ["hlt #0xf000"] if qemu_test_result else []
-    if hlt_instructions != expected_hlt:
+    if any(instruction.startswith("hlt") for instruction in instructions):
         raise VerificationError(
-            "Burrow first entry has an unexpected semihosting instruction shape"
+            "Burrow first entry directly contains semihosting"
         )
-    if qemu_test_result:
-        cursor = 0
-        for fragment in ("mov w0, #0x20", "adr x1,", "hlt #0xf000"):
-            while cursor < len(instructions) and fragment not in instructions[cursor]:
-                cursor += 1
-            if cursor == len(instructions):
-                raise VerificationError(
-                    f"QEMU result path is missing ordered instruction {fragment}"
-                )
+    branches_to_transport = [
+        instruction for instruction in instructions
+        if instruction.startswith("b ") and "burrow_qemu_test_result" in instruction
+    ]
+    if len(branches_to_transport) != (1 if qemu_test_result is not None else 0):
+        raise VerificationError("Burrow first entry has an unexpected QEMU transport branch")
+
+
+def verify_qemu_result_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+    *,
+    mode: str | None,
+) -> None:
+    if mode is None:
+        return
+
+    result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble-symbols=burrow_qemu_test_result",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble the QEMU result transport")
+
+    instructions = []
+    for line in result.stdout.splitlines():
+        if not re.match(r"^[0-9a-fA-F]+:", line.strip()):
+            continue
+        instruction = line.split(":", 1)[1].split("//", 1)[0].strip()
+        instructions.append(re.sub(r"\s+", " ", instruction))
+    if not instructions:
+        raise VerificationError("QEMU result transport disassembly is empty")
+
+    cursor = 0
+    for fragment in (
+        "mov x24, x0",
+        "ldr w5, [x24, #0x18]",
+        "tst w5, #0x8",
+        "mov w0, #0x20",
+        "adr x1,",
+        "hlt #0xf000",
+        "msr DAIFSet, #0xf",
+        "wfe",
+    ):
+        while cursor < len(instructions) and fragment not in instructions[cursor]:
             cursor += 1
+        if cursor == len(instructions):
+            raise VerificationError(
+                f"QEMU result transport is missing ordered instruction {fragment}"
+            )
+        cursor += 1
+
+    if [instruction for instruction in instructions if instruction.startswith("hlt")] != ["hlt #0xf000"]:
+        raise VerificationError("QEMU result transport must contain exactly one HLT #0xF000")
+    if any(instruction.startswith(("brk", "eret", "hvc", "smc", "svc"))
+           for instruction in instructions):
+        raise VerificationError("QEMU result transport uses an unexpected trap")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -1187,8 +1257,8 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--qemu-test-result",
-        action="store_true",
-        help="require the isolated first-entry QEMU result transport",
+        choices=("pass", "fail", "panic"),
+        help="require the selected isolated QEMU result transport",
     )
     return parser.parse_args()
 
@@ -1206,6 +1276,11 @@ def main() -> int:
             arguments.objdump,
             arguments.image,
             qemu_test_result=arguments.qemu_test_result,
+        )
+        verify_qemu_result_disassembly(
+            arguments.objdump,
+            arguments.image,
+            mode=arguments.qemu_test_result,
         )
         if arguments.reference_image is not None:
             if not arguments.runtime:

@@ -45,7 +45,6 @@
 
 .equ PL011_DATA,                  0x00
 .equ PL011_FLAG,                  0x18
-.equ PL011_BUSY,                  0x08
 .equ PL011_TX_FULL,               0x20
 
 .section .text.burrow_aarch64_entry, "ax", %progbits
@@ -219,17 +218,8 @@ burrow_aarch64_entry:
     bl .Lwrite_character
 
 #if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
-    adrp x25, .Lpass_marker
-    add x25, x25, :lo12:.Lpass_marker
-    bl .Lwrite_string
-.Lwait_for_transmit_drain:
-    ldr w5, [x24, #PL011_FLAG]
-    tst w5, #PL011_BUSY
-    b.ne .Lwait_for_transmit_drain
-    mov w0, #0x20
-    adrp x1, burrow_qemu_exit_arguments
-    add x1, x1, :lo12:burrow_qemu_exit_arguments
-    hlt #0xf000
+    mov x0, x24
+    b burrow_qemu_test_result
 #endif
 
 .Lwait:
@@ -261,10 +251,6 @@ burrow_aarch64_entry:
     .asciz "BURROW_FIRST_ENTRY:EL"
 .Ldiagnostic_boot:
     .asciz ":boot=0x"
-#if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
-.Lpass_marker:
-    .asciz "WARREN_TEST:1:PASS:burrow-first-entry\r\n"
-#endif
 
 .section .data.burrow.first_entry, "aw", %progbits
 .p2align 3
@@ -284,15 +270,5 @@ burrow_first_entry_stack_pointer:
 .hidden burrow_first_entry_daif
 burrow_first_entry_daif:
     .quad 0
-
-#if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
-.section .data.burrow.test_result, "aw", %progbits
-.p2align 3
-.global burrow_qemu_exit_arguments
-.hidden burrow_qemu_exit_arguments
-burrow_qemu_exit_arguments:
-    .quad 0x20026
-    .quad 0
-#endif
 
 .section .note.GNU-stack, "", %progbits

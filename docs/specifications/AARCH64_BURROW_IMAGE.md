@@ -294,7 +294,12 @@ the exact test-only `SYS_EXIT_EXTENDED` operation with status zero. The host
 requires serial/process agreement.
 
 `WARREN_ENABLE_QEMU_TEST_RESULT` defaults off and is enabled only by combined
-system-test orchestration. Focused debug and release artifacts must contain no
-semihosting HLT, terminal test marker, or exit argument block; the byte-level
-artifact verifier enforces both absence in ordinary products and exact presence
-in the system-test child.
+system-test orchestration. Its private `WARREN_QEMU_TEST_RESULT_MODE` selection
+is one of `pass`, `fail`, or `panic`; each mode chooses one exact terminal line
+and matching status block. The transport object lives under
+`kernel/src/Platform/QemuVirt` and is not compiled into ordinary Burrow.
+
+Focused debug and release artifacts must contain no semihosting HLT, terminal
+test marker, exit argument block, or branch from first entry into the transport.
+The byte-level and disassembly artifact verifier enforces absence in ordinary
+products and the exact selected shape in every system-test child.

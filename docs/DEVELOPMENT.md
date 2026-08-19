@@ -113,7 +113,10 @@ boot-information ABI, the serial classifier, and toolchain gates.
 The combined system build explicitly enables the test-only QEMU transport in
 its Burrow child. Focused `aarch64-debug` and `aarch64-release` products leave
 that option off, and their artifact verification rejects the semihosting trap,
-terminal marker, and argument block.
+terminal markers, and argument blocks. The system build also composes dedicated
+failure and panic ESP fixtures. `WarrenSystemQemuResultFailure` requires an
+agreed `FAIL`/64 result, while `WarrenSystemQemuResultPanic` requires an agreed
+`PANIC`/2 result through the same QEMU harness used by the successful boot.
 
 Focused profiles remain supported:
 

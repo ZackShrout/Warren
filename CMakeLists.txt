@@ -80,6 +80,7 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/linker/AArch64/burrow.ld
     kernel/src/Arch/AArch64/Entry.s
     kernel/src/Core/ImageLayout.cpp
+    kernel/src/Platform/QemuVirt/TestResult.S
     third_party/README.md
     third_party/edk2/LICENSE
     third_party/edk2/README.md
@@ -366,11 +367,36 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         "Enable Burrow's QEMU-only first-entry result transport"
         OFF
     )
+    set(WARREN_QEMU_TEST_RESULT_MODE "pass" CACHE STRING
+        "Terminal result emitted by a QEMU test-enabled Burrow image"
+    )
+    set_property(CACHE WARREN_QEMU_TEST_RESULT_MODE PROPERTY STRINGS
+        pass fail panic
+    )
+
+    if(WARREN_ENABLE_QEMU_TEST_RESULT AND
+       NOT WARREN_QEMU_TEST_RESULT_MODE MATCHES "^(pass|fail|panic)$")
+        message(FATAL_ERROR
+            "WARREN_QEMU_TEST_RESULT_MODE must be pass, fail, or panic"
+        )
+    endif()
 
     add_library(BurrowImageObjects OBJECT
         kernel/src/Arch/AArch64/Entry.s
         kernel/src/Core/ImageLayout.cpp
     )
+    if(WARREN_ENABLE_QEMU_TEST_RESULT)
+        target_sources(BurrowImageObjects PRIVATE
+            kernel/src/Platform/QemuVirt/TestResult.S
+        )
+        string(TOUPPER "${WARREN_QEMU_TEST_RESULT_MODE}" _burrow_result_mode_upper)
+        set(_burrow_verifier_result_arguments
+            --qemu-test-result "${WARREN_QEMU_TEST_RESULT_MODE}"
+        )
+    else()
+        set(_burrow_result_mode_upper "PASS")
+        set(_burrow_verifier_result_arguments)
+    endif()
     set_source_files_properties(kernel/src/Arch/AArch64/Entry.s PROPERTIES
         COMPILE_OPTIONS "-x;assembler-with-cpp"
     )
@@ -404,6 +430,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     target_compile_definitions(BurrowImageObjects PRIVATE
         $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:NDEBUG>
         $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>>:WARREN_ENABLE_QEMU_TEST_RESULT=1>
+        $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>>:WARREN_QEMU_TEST_RESULT_${_burrow_result_mode_upper}=1>
     )
 
     set(_burrow_artifact_directory "${CMAKE_CURRENT_BINARY_DIR}/artifacts")
@@ -443,7 +470,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
             --objdump "${CMAKE_OBJDUMP}"
-            $<$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>:--qemu-test-result>
+            ${_burrow_verifier_result_arguments}
             --image "${_burrow_symbol_image}"
         COMMAND "${CMAKE_OBJCOPY}"
             --strip-debug
@@ -452,7 +479,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
             --objdump "${CMAKE_OBJDUMP}"
-            $<$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>:--qemu-test-result>
+            ${_burrow_verifier_result_arguments}
             --runtime
             --image "${_burrow_runtime_image}"
             --reference-image "${_burrow_symbol_image}"
@@ -487,6 +514,8 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     unset(_burrow_symbol_image)
     unset(_burrow_runtime_image)
     unset(_burrow_map)
+    unset(_burrow_result_mode_upper)
+    unset(_burrow_verifier_result_arguments)
 endif()
 
 if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")

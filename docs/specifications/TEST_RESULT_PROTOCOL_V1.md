@@ -233,8 +233,12 @@ Host tests cover at least:
 - launch-error and timeout classifications.
 
 The target test matrix proves the exact AArch64 trap and argument block with
-pass, fail, and panic images. Release and interactive images are inspected to
-ensure that the semihosting trap and platform support are absent.
+pass, fail, and panic images. The current target fixtures all use the
+`burrow-first-entry` identifier and select `PASS`/0, `FAIL`/64, or `PANIC`/2 at
+build time. Each is packaged into its own ESP, boots through the same UEFI and
+AArch64 handoff, and is accepted only when the common host harness observes the
+expected serial/process pair. Focused non-test debug and release images are
+inspected to ensure that the semihosting trap and platform support are absent.
 
 ## 11. References
 

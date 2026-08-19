@@ -103,7 +103,9 @@ process results for `burrow-first-entry`: UEFI loads Burrow, constructs and
 validates the final boot-information object, exits boot services, and transfers
 through the reviewed AArch64 boundary; Burrow then validates the directly
 observable entry state and reports the terminal result. The system-only Burrow
-child contains the QEMU result transport. Focused Burrow products do not.
+children contain the QEMU result transport. Separate target fixtures prove
+matching pass, explicit-failure, and panic serial/process results. Focused
+Burrow products do not contain that transport.
 
 The `aarch64-debug` and `uefi-aarch64-debug` presets remain available for
 focused product builds. The Burrow, UEFI, and system profiles each have a

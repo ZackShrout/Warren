@@ -21,6 +21,11 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--firmware-vars", required=True, type=pathlib.Path)
     parser.add_argument("--esp", required=True, type=pathlib.Path)
     parser.add_argument("--expected-test", required=True)
+    parser.add_argument(
+        "--expected-result",
+        choices=("pass", "fail", "panic"),
+        default="pass",
+    )
     parser.add_argument("--timeout", type=float, default=30.0)
     return parser.parse_args()
 
@@ -83,9 +88,15 @@ def main() -> int:
 
     sys.stdout.buffer.write(result.stdout)
     protocol_result = classify_process_result(result.stdout, result.returncode)
+    expected = {
+        "pass": (HostClassification.PASS, 0),
+        "fail": (HostClassification.EXPLICIT_FAILURE, 64),
+        "panic": (HostClassification.PANIC_OR_ASSERTION, 2),
+    }[arguments.expected_result]
     if (
-        protocol_result.classification is not HostClassification.PASS
+        protocol_result.classification is not expected[0]
         or protocol_result.test_identifier != arguments.expected_test
+        or protocol_result.guest_result_code != expected[1]
     ):
         print(
             f"UEFI smoke classification: {protocol_result.classification.value}: "
@@ -94,7 +105,7 @@ def main() -> int:
         )
         return protocol_result.harness_status or 3
 
-    print("Warren UEFI smoke test passed")
+    print(f"Warren UEFI smoke test observed expected {arguments.expected_result} result")
     return 0
 
 
