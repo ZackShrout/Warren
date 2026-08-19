@@ -71,12 +71,12 @@ ELF and complete program-header table. Every loadable byte and the entry are
 below `0x80000000`. The loader may therefore compute every physical address by
 adding one chosen load bias to an ELF-relative virtual address.
 
-The current debug and release images share this loaded shape:
+The current ordinary debug and release images share this loaded shape:
 
 | Header | Offset | Virtual address | File size | Memory size | Flags |
 | --- | ---: | ---: | ---: | ---: | --- |
 | `PT_LOAD` | `0x0000` | `0x0000` | `0x01FF` | `0x01FF` | R |
-| `PT_LOAD` | `0x1000` | `0x1000` | `0x02B0` | `0x02B0` | RX |
+| `PT_LOAD` | `0x1000` | `0x1000` | `0x02F0` | `0x02F0` | RX |
 | `PT_LOAD` | `0x2000` | `0x2000` | `0x0088` | `0x00D0` | RW |
 | `PT_DYNAMIC` | `0x2028` | `0x2028` | `0x0060` | `0x0060` | RW |
 | `PT_GNU_RELRO` | `0x2028` | `0x2028` | `0x0060` | `0x0060` | R |
@@ -98,8 +98,8 @@ The runtime copy currently retains these sections:
 | `.rodata` | `SHT_PROGBITS`, A | R | `0x01D0` |
 | `.text` | `SHT_PROGBITS`, AX | RX | `0x1000` |
 | `.data` | `SHT_PROGBITS`, WA | RW | `0x2000` |
-| `.dynamic` | `SHT_DYNAMIC`, WA | RW | `0x2008` |
-| `.bss` | `SHT_NOBITS`, WA | RW | `0x2070` |
+| `.dynamic` | `SHT_DYNAMIC`, WA | RW | `0x2028` |
+| `.bss` | `SHT_NOBITS`, WA | RW | `0x2090` |
 | `.symtab`, `.strtab`, `.shstrtab` | Symbol/strings | Not loaded | no runtime address |
 
 Allocated sections are wholly contained by a compatible load class. A

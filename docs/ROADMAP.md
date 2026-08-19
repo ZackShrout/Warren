@@ -25,31 +25,37 @@ This runway records dependency order, not a promise that later branch boundaries
 will remain unchanged. Only the next branch receives a committed detailed plan.
 The runway is reassessed after every merge.
 
-1. **`feature/burrow-loader` — load without handoff.** Teach the UEFI bootloader
-   to locate, validate, allocate, load, zero, and apply the permitted
+1. **Complete — `feature/burrow-loader`: load without handoff.** The UEFI bootloader
+   locates, validates, allocates, loads, zeroes, and applies the permitted
    `R_AARCH64_RELATIVE` relocations to Burrow. It reports the verified entry and
    load bias, then retains the proven firmware-controlled completion path. The
    complete plan is in
    [`plans/burrow-loader.md`](plans/burrow-loader.md).
-2. **`feature/burrow-first-entry` — transfer execution.** Construct the accepted
-   boot-information object, obtain the final UEFI memory map, call
-   `ExitBootServices()`, establish the handoff contract, and enter Burrow's
-   architecture assembly. A minimal platform diagnostic and test-only result
-   transport provide unambiguous proof without pretending the full console or
-   normalized kernel entry is complete. The complete plan is in
+2. **Complete — `feature/burrow-first-entry`: transfer execution.** The loader
+   constructs the accepted boot-information object from the final UEFI memory
+   map, calls `ExitBootServices()`, establishes the handoff contract, and enters
+   Burrow's architecture assembly. Minimal platform diagnostics, failure
+   injection, and test-only result transport provide unambiguous proof without
+   pretending the full console or normalized kernel entry is complete. The
+   completed plan is in
    [`plans/burrow-first-entry.md`](plans/burrow-first-entry.md).
-3. **`feature/aarch64-normalized-entry` — reach kernel C++ at EL1.** Add emergency
-   vectors, supported EL1/EL2 normalization, an owned transition stack and early
-   page tables, then call architecture-neutral Burrow entry under the accepted
-   state contract.
+3. **Next — `feature/aarch64-normalized-entry`: reach kernel C++ at EL1.** Add
+   emergency vectors, supported EL1/EL2 normalization, an owned transition stack
+   and early page tables, then call architecture-neutral Burrow entry under the
+   accepted state contract.
 
-The completed `foundation/phase-0-contracts` and `feature/burrow-image` plans,
-along with the implemented `feature/burrow-loader` contract, remain available in
-[`plans/phase-0-contracts.md`](plans/phase-0-contracts.md) and
-[`plans/burrow-image.md`](plans/burrow-image.md), and
-[`plans/burrow-loader.md`](plans/burrow-loader.md). The Burrow image's implemented
-subordinate contract is in
-[`specifications/AARCH64_BURROW_IMAGE.md`](specifications/AARCH64_BURROW_IMAGE.md).
+The completed `foundation/phase-0-contracts`, `feature/burrow-image`,
+`feature/burrow-loader`, and `feature/burrow-first-entry` plans remain available
+in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md),
+[`plans/burrow-image.md`](plans/burrow-image.md),
+[`plans/burrow-loader.md`](plans/burrow-loader.md), and
+[`plans/burrow-first-entry.md`](plans/burrow-first-entry.md). The implemented
+subordinate contracts are in
+[`specifications/AARCH64_BURROW_IMAGE.md`](specifications/AARCH64_BURROW_IMAGE.md),
+[`specifications/AARCH64_LOADER_HANDOFF.md`](specifications/AARCH64_LOADER_HANDOFF.md),
+[`specifications/BOOT_INFORMATION_V1.md`](specifications/BOOT_INFORMATION_V1.md),
+and
+[`specifications/TEST_RESULT_PROTOCOL_V1.md`](specifications/TEST_RESULT_PROTOCOL_V1.md).
 
 Likely later slices include the allocation-free PL011 console, complete exception
 reporting, and the ARM generic timer. Their exact branch boundaries depend on
@@ -117,15 +123,26 @@ Completed Phase 1 evidence:
 - page-separated read-only, executable, writable, and zero-filled content;
 - independent generated malformed-ELF fixtures and build-time image audit;
 - deterministic combined ESP packaging with byte-identical Burrow and UEFI
-  inputs; and
+  inputs;
 - isolated Burrow/UEFI compiler environments with debug and release system
   profiles;
 - an environment-neutral production ELF reader and materializer with malformed,
   zero-fill, physical-base, and synthetic relative-relocation host coverage;
 - fixed-path UEFI file access on the bootloader's own device plus
-  firmware-selected contiguous page allocation; and
-- combined debug and release QEMU loader results that report a live physical
-  extent, load bias, and relocated entry without entering Burrow.
+  firmware-selected contiguous page allocation;
+- the earlier loader-only QEMU proof of a live physical extent, load bias, and
+  relocated entry before transfer;
+- an environment-neutral final-map producer, normalized UEFI memory mapping,
+  resource overlays, bootstrap stack, and independently validated protocol 1.0
+  handoff object;
+- bounded `ExitBootServices()` retry discipline, reviewed AArch64 cache
+  synchronization, and a nonreturning register/stack transfer boundary;
+- debug and release QEMU proof that Burrow's assembly witness executes at EL1
+  after firmware exit and reports an agreed two-channel `burrow-first-entry`
+  result; and
+- target failure fixtures for malformed finalized header and console data,
+  loader post-exit containment, and isolated pass/fail/panic transport, with
+  test machinery excluded from ordinary images.
 
 Exit demonstration:
 

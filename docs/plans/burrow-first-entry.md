@@ -1,6 +1,6 @@
 # Burrow First Entry Branch Plan
 
-- **Status:** Ready
+- **Status:** Complete — verified 2026-08-19
 - **Branch:** `feature/burrow-first-entry`
 - **Base:** `main` after integration of `feature/burrow-loader`
 - **Roadmap phase:** Phase 1 — First Light
@@ -9,7 +9,24 @@
   Burrow's AArch64 assembly entry through post-firmware diagnostics and the
   test-only QEMU result transport.
 
-## Why This Branch Is Next
+## Completion Record
+
+The completed branch passes the documented bootstrap, host, focused AArch64,
+focused UEFI, and combined system matrix from newly configured build trees.
+The host suite contains 12 tests, each focused UEFI suite contains one
+reproducibility test, and each combined Debug/Release system suite contains nine
+tests, including live success, malformed-header rejection, malformed-console
+rejection, loader post-exit containment, and transport failure/panic fixtures.
+Artifact verification proves the Burrow and UEFI test transports are absent
+from ordinary Debug and Release products.
+
+The pinned UEFI/QEMU profile hands off at EL1, so live execution proves the EL1
+path. The accepted EL2 path and classification remain covered by assembly and
+disassembly verification but are not claimed as a live EL2 boot. Burrow assembly
+executes under inherited firmware identity mappings; kernel C++ does not run,
+no exception vector is installed, and no reusable console exists yet.
+
+## Why This Branch Followed The Loader Slice
 
 The completed Burrow-loader slice leaves one validated, relocated Burrow image
 in a live firmware allocation and reports its physical extent, load bias, and

@@ -10,8 +10,10 @@ It does not exit boot services, validate the complete boot-information object,
 install exception vectors, change exception level, or alter the inherited MMU
 and cache configuration.
 
-The current production entry path does not invoke this boundary until the
-first-entry witness and post-exit failure path are ready to receive it.
+The production UEFI entry path invokes this boundary only after successful boot
+information finalization and `ExitBootServices()`. Burrow's first-entry witness
+receives the transfer; any loader-side failure after the firmware boundary uses
+the separate containment path in section 5.
 
 ## 2. Checked Preparation
 

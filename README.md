@@ -10,9 +10,12 @@ The repository builds and independently audits Burrow's AArch64 ELF image, then
 packages its debug-stripped runtime copy beside Warren's UEFI bootloader. The
 bootloader opens that exact packaged file from its own boot device, validates it
 with Warren-owned production C++, allocates firmware-selected pages, copies and
-zero-fills the load image, and applies the permitted relative relocations. QEMU
-proves the resulting live physical extent and relocated entry before firmware
-shutdown. Burrow is loaded but is not executed, and boot services remain active.
+zero-fills the load image, constructs and validates boot information from the
+final UEFI memory map, exits boot services, and transfers through the reviewed
+AArch64 boundary. Pinned QEMU boots prove Burrow's assembly witness executes at
+EL1 and accepts the observable handoff contract. The current proof deliberately
+stops before exception vectors, EL normalization, owned mappings, or
+architecture-neutral kernel C++ entry.
 
 ## Project Vocabulary
 
@@ -104,8 +107,16 @@ validates the final boot-information object, exits boot services, and transfers
 through the reviewed AArch64 boundary; Burrow then validates the directly
 observable entry state and reports the terminal result. The system-only Burrow
 children contain the QEMU result transport. Separate target fixtures prove
-matching pass, explicit-failure, and panic serial/process results. Focused
-Burrow products do not contain that transport.
+matching pass, explicit-failure, and panic serial/process results; UEFI fault
+fixtures prove rejection of malformed finalized handoff data and loader-side
+post-exit containment. Focused Burrow products do not contain that transport.
+
+Before final map capture, loader diagnostics use the UEFI console. After a
+successful exit, the loader and first-entry witness use minimal direct PL011
+output under the inherited firmware identity mapping. That one-way output is
+not the later reusable Burrow console. Semihosting exists only in trusted QEMU
+test artifacts and is neither an ordinary shutdown path nor a physical-machine
+interface.
 
 The `aarch64-debug` and `uefi-aarch64-debug` presets remain available for
 focused product builds. The Burrow, UEFI, and system profiles each have a

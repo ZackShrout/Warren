@@ -80,7 +80,7 @@ only the 28 individually hashed files on the checked-in allowlist. QEMU's UEFI
 code and variable-store images are also verified against a checked-in integrity
 manifest before any build paths are generated.
 
-## Current Burrow Loader Slice
+## Current Burrow First-Entry Slice
 
 The stable combined developer commands are:
 
@@ -266,8 +266,9 @@ Target-only behavior runs in QEMU. A test boot has:
 
 The exact ASCII grammar, guest codes, host statuses, ordering, and disagreement
 precedence are fixed in `specifications/TEST_RESULT_PROTOCOL_V1.md`. The current
-combined loader proof uses that serial grammar with firmware shutdown but does
-not claim the later two-channel Burrow result contract.
+combined proof uses the two-channel `burrow-first-entry` contract after UEFI
+boot services have ended. It proves Burrow assembly execution, not the later
+normalized kernel entry or an ordinary shutdown facility.
 
 ### Interactive tests
 

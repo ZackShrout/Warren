@@ -259,8 +259,9 @@ or `PANIC`/2 at build time. A separate UEFI fixture corrupts the finalized magic
 after successful `ExitBootServices()` and requires Burrow to reject it with
 `FAIL`/68 without emitting its first-entry success diagnostic. A second clears
 the finalized console output flag and requires `FAIL`/72 through the independent
-QEMU reporter. Another enters the loader's real post-exit containment path and requires its direct PL011
-diagnostic plus `FAIL`/73 without entering Burrow. Each is packaged into its own
+QEMU reporter. Another enters the loader's real post-exit containment path and
+requires its direct PL011 diagnostic plus `FAIL`/73 without entering Burrow.
+Each is packaged into its own
 ESP and accepted only when the common host harness observes the expected
 serial/process pair and route-specific output. Focused non-test debug and
 release images are inspected to ensure that semihosting and QEMU platform

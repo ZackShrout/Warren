@@ -48,7 +48,7 @@ Initial machine assumptions:
 | Concern | Initial choice |
 | --- | --- |
 | CPU architecture | AArch64 / ARMv8.0-A, Cortex-A57 reference CPU |
-| Privilege | Loader may hand off at EL1 or EL2; Burrow normalizes to EL1 |
+| Privilege | Loader may hand off at EL1 or EL2; a later stage normalizes to EL1 |
 | CPU count | One |
 | Memory | 512 MiB reference configuration |
 | Base page size | 4 KiB |
@@ -103,7 +103,15 @@ Burrow at `EFI/WARREN/BURROW.ELF`. Only that combined image owns the current
 `burrow-first-entry` QEMU result. Burrow emits the terminal serial record and
 uses the test-only semihosting exit; the host requires both channels to agree.
 Dedicated pass, explicit-failure, and panic Burrow children prove the transport
-without adding it to the ordinary kernel image.
+without adding it to the ordinary kernel image. Separate UEFI fault fixtures
+prove Burrow rejects finalized header and console corruption and prove the
+loader's post-exit failure containment without entering Burrow.
+
+Loader diagnostics use the UEFI console only before the final memory-map
+transaction. After successful exit, the loader and Burrow witness use bounded
+direct PL011 writes under firmware's inherited identity mapping. This is not a
+reusable kernel console. The test-only semihosting path is absent from ordinary
+Burrow and UEFI products and is not a physical-machine interface.
 
 Burrow is built as a static position-independent ELF64 `ET_DYN` image with
 separate read-only, executable, and writable load pages. The current minimal
@@ -163,8 +171,8 @@ docs/
 
 Directories appear only when their first owned artifact exists. The initial
 `kernel/src/Core`, `kernel/src/Arch/AArch64`, and `kernel/linker/AArch64`
-directories now contain the image layout sentinels, nonfunctional architecture
-entry, and audited linker script; later directories remain planned.
+directories now contain the image layout sentinels, reviewed first-entry
+witness, and audited linker script; later directories remain planned.
 
 ## Portability Layers
 
