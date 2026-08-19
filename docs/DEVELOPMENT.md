@@ -117,6 +117,14 @@ terminal markers, and argument blocks. The system build also composes dedicated
 failure and panic ESP fixtures. `WarrenSystemQemuResultFailure` requires an
 agreed `FAIL`/64 result, while `WarrenSystemQemuResultPanic` requires an agreed
 `PANIC`/2 result through the same QEMU harness used by the successful boot.
+`WarrenSystemBurrowRejectsInvalidHeader` corrupts the finalized magic after
+firmware exit and requires `FAIL`/68 with no Burrow success diagnostic.
+`WarrenSystemBurrowRejectsInvalidConsole` clears the finalized console output
+flag and requires `FAIL`/72, proving that the QEMU failure reporter does not
+trust the rejected record.
+`WarrenSystemPostExitFailureContainment` enters the loader's nonreturning
+post-exit failure routine and requires its direct diagnostic plus `FAIL`/73,
+again without entering Burrow.
 
 Focused profiles remain supported:
 

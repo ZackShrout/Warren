@@ -440,5 +440,25 @@ extern "C" EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE*
         warren::boot::wait_after_aarch64_handoff_failure(
             early_console.physical_address);
 
+#if defined(WARREN_QEMU_HANDOFF_FAULT_BOOT_MAGIC)
+    // The trusted QEMU fixture mutates the finalized object only after boot
+    // services have ended and loader validation has succeeded. Burrow must
+    // independently reject the malformed handoff.
+    *reinterpret_cast<volatile uint8_t*>(storage.object.writable_start) = 0;
+#elif defined(WARREN_QEMU_HANDOFF_FAULT_CONSOLE_RECORD)
+    // Prove that failure reporting does not trust the console record that the
+    // witness has just rejected.
+    const auto* header{ reinterpret_cast<const warren_boot_information_t*>(
+        storage.object.writable_start) };
+    auto* console{ reinterpret_cast<volatile warren_boot_early_console_t*>(
+        storage.object.writable_start + header->early_console.offset) };
+    console->flags = 0;
+#elif defined(WARREN_QEMU_HANDOFF_FAULT_POST_EXIT)
+    // Exercise the real nonreturning loader-side containment path after a
+    // successful ExitBootServices transition.
+    warren::boot::wait_after_aarch64_handoff_failure(
+        early_console.physical_address);
+#endif
+
     warren::boot::transfer_to_burrow(handoff_arguments);
 }

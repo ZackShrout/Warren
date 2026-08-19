@@ -7,8 +7,16 @@ from __future__ import annotations
 import argparse
 import pathlib
 import re
+import struct
 import subprocess
 import sys
+
+
+QEMU_SEMIHOST_HLT = bytes.fromhex("00005ed4")
+QEMU_POST_EXIT_FAILURE_MARKER = (
+    b"WARREN_TEST:1:FAIL:burrow-first-entry:73\r\n\0"
+)
+QEMU_POST_EXIT_FAILURE_ARGUMENTS = struct.pack("<QQ", 0x20026, 73)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -17,6 +25,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--objdump", required=True, type=pathlib.Path)
     parser.add_argument("--handoff-object", required=True, type=pathlib.Path)
     parser.add_argument("--image", required=True, type=pathlib.Path)
+    parser.add_argument("--qemu-post-exit-failure-result", action="store_true")
     return parser.parse_args()
 
 
@@ -142,12 +151,16 @@ def verify_handoff_assembly(arguments: argparse.Namespace) -> None:
             "tbnz w7, #0x5",
             "str w6, [x12]",
             "msr DAIFSet, #0xf",
+            "cbz x13",
+            "br x13",
             "wfe",
         ),
     )
     if any(instruction.startswith(("bl ", "blr ", "ret", "brk", "hlt", "hvc", "smc", "svc"))
            for instruction in failure):
         raise RuntimeError("post-exit failure containment can call, return, or trap")
+    if [instruction for instruction in failure if instruction.startswith("br ")] != ["br x13"]:
+        raise RuntimeError("post-exit failure containment has an unexpected branch target")
 
     image_bytes = arguments.image.read_bytes()
     for message in (
@@ -158,6 +171,19 @@ def verify_handoff_assembly(arguments: argparse.Namespace) -> None:
     ):
         if image_bytes.count(message) != 1:
             raise RuntimeError(f"UEFI image does not contain exactly one {message!r}")
+
+    expected_test_count = 1 if arguments.qemu_post_exit_failure_result else 0
+    requirement = "exactly once" if expected_test_count else "absent"
+    for payload, description in (
+        (QEMU_SEMIHOST_HLT, "QEMU semihost HLT"),
+        (QEMU_POST_EXIT_FAILURE_MARKER, "QEMU post-exit failure marker"),
+        (QEMU_POST_EXIT_FAILURE_ARGUMENTS, "QEMU post-exit failure argument block"),
+    ):
+        count = image_bytes.count(payload)
+        if count != expected_test_count:
+            raise RuntimeError(
+                f"{description} must be {requirement}, found {count}"
+            )
 
 
 def main() -> int:

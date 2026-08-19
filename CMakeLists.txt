@@ -77,6 +77,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/specifications/AARCH64_LOADER_HANDOFF.md
     docs/specifications/BOOT_INFORMATION_V1.md
     docs/specifications/TEST_RESULT_PROTOCOL_V1.md
+    boot/Platform/QemuVirt/PostExitTestResult.s
     kernel/linker/AArch64/burrow.ld
     kernel/src/Arch/AArch64/Entry.s
     kernel/src/Core/ImageLayout.cpp
@@ -519,6 +520,18 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
 endif()
 
 if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
+    set(WARREN_QEMU_HANDOFF_FAULT "none" CACHE STRING
+        "Trusted QEMU-only UEFI handoff fault fixture"
+    )
+    set_property(CACHE WARREN_QEMU_HANDOFF_FAULT PROPERTY STRINGS
+        none boot-magic console-record post-exit
+    )
+    if(NOT WARREN_QEMU_HANDOFF_FAULT MATCHES "^(none|boot-magic|console-record|post-exit)$")
+        message(FATAL_ERROR
+            "WARREN_QEMU_HANDOFF_FAULT must be none, boot-magic, console-record, or post-exit"
+        )
+    endif()
+
     add_library(WarrenAArch64HandoffAssembly OBJECT
         boot/Arch/AArch64/Handoff.s
     )
@@ -570,6 +583,42 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
         $<$<CONFIG:Release>:NDEBUG>
     )
 
+    set(_warren_qemu_post_exit_result_objects)
+    set(_warren_qemu_post_exit_result_targets)
+    set(_warren_uefi_verifier_test_arguments)
+    if(WARREN_QEMU_HANDOFF_FAULT STREQUAL "boot-magic")
+        target_compile_definitions(WarrenUefiBootloaderObject PRIVATE
+            WARREN_QEMU_HANDOFF_FAULT_BOOT_MAGIC=1
+        )
+    elseif(WARREN_QEMU_HANDOFF_FAULT STREQUAL "console-record")
+        target_compile_definitions(WarrenUefiBootloaderObject PRIVATE
+            WARREN_QEMU_HANDOFF_FAULT_CONSOLE_RECORD=1
+        )
+    elseif(WARREN_QEMU_HANDOFF_FAULT STREQUAL "post-exit")
+        target_compile_definitions(WarrenUefiBootloaderObject PRIVATE
+            WARREN_QEMU_HANDOFF_FAULT_POST_EXIT=1
+            WARREN_ENABLE_QEMU_POST_EXIT_FAILURE_RESULT=1
+        )
+        add_library(WarrenQemuPostExitResultAssembly OBJECT
+            boot/Platform/QemuVirt/PostExitTestResult.s
+        )
+        target_compile_options(WarrenQemuPostExitResultAssembly PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Werror
+        )
+        list(APPEND _warren_qemu_post_exit_result_objects
+            $<TARGET_OBJECTS:WarrenQemuPostExitResultAssembly>
+        )
+        list(APPEND _warren_qemu_post_exit_result_targets
+            WarrenQemuPostExitResultAssembly
+        )
+        set(_warren_uefi_verifier_test_arguments
+            --qemu-post-exit-failure-result
+        )
+    endif()
+
     set(_warren_artifact_directory "${CMAKE_CURRENT_BINARY_DIR}/artifacts")
     set(_warren_uefi_image "${_warren_artifact_directory}/BOOTAA64.EFI")
     set(_warren_esp_image "${_warren_artifact_directory}/warren-esp.img")
@@ -592,11 +641,13 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
             $<TARGET_OBJECTS:WarrenBurrowLoader>
             $<TARGET_OBJECTS:WarrenBootProtocol>
             $<TARGET_OBJECTS:WarrenUefiBootloaderObject>
+            ${_warren_qemu_post_exit_result_objects}
         COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_uefi_image.py"
             --readobj "${WARREN_LLVM_READOBJ}"
             --objdump "${WARREN_LLVM_OBJDUMP}"
             --handoff-object $<TARGET_OBJECTS:WarrenAArch64HandoffAssembly>
+            ${_warren_uefi_verifier_test_arguments}
             --image "${_warren_uefi_image}"
         DEPENDS
             WarrenAArch64HandoffAssembly
@@ -607,6 +658,8 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
             $<TARGET_OBJECTS:WarrenBurrowLoader>
             $<TARGET_OBJECTS:WarrenBootProtocol>
             $<TARGET_OBJECTS:WarrenUefiBootloaderObject>
+            ${_warren_qemu_post_exit_result_targets}
+            ${_warren_qemu_post_exit_result_objects}
             tools/verify_uefi_image.py
         COMMAND_EXPAND_LISTS
         VERBATIM
@@ -641,5 +694,9 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
             --bootloader "${_warren_uefi_image}"
     )
     set_tests_properties(WarrenEspReproducibility PROPERTIES TIMEOUT 20)
+
+    unset(_warren_qemu_post_exit_result_objects)
+    unset(_warren_qemu_post_exit_result_targets)
+    unset(_warren_uefi_verifier_test_arguments)
 
 endif()

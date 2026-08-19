@@ -18,7 +18,13 @@ extern "C" [[noreturn]] void warren_aarch64_handoff(
     uint64_t pl011_physical_address) noexcept;
 
 extern "C" [[noreturn]] void warren_aarch64_post_exit_failure(
+    uint64_t pl011_physical_address,
+    uint64_t test_result_handler) noexcept;
+
+#if defined(WARREN_ENABLE_QEMU_POST_EXIT_FAILURE_RESULT)
+extern "C" [[noreturn]] void warren_qemu_post_exit_failure_result(
     uint64_t pl011_physical_address) noexcept;
+#endif
 
 namespace warren::boot {
     bool synchronize_aarch64_instruction_cache(
@@ -46,6 +52,12 @@ namespace warren::boot {
     [[noreturn]] void wait_after_aarch64_handoff_failure(
         uint64_t pl011_physical_address) noexcept
     {
-        warren_aarch64_post_exit_failure(pl011_physical_address);
+#if defined(WARREN_ENABLE_QEMU_POST_EXIT_FAILURE_RESULT)
+        warren_aarch64_post_exit_failure(
+            pl011_physical_address,
+            reinterpret_cast<uintptr_t>(&warren_qemu_post_exit_failure_result));
+#else
+        warren_aarch64_post_exit_failure(pl011_physical_address, 0);
+#endif
     }
 } // namespace warren::boot

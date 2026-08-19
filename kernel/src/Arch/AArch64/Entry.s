@@ -47,6 +47,15 @@
 .equ PL011_FLAG,                  0x18
 .equ PL011_TX_FULL,               0x20
 
+.equ FIRST_ENTRY_FAIL_REGISTERS,        65
+.equ FIRST_ENTRY_FAIL_EXCEPTION_LEVEL,  66
+.equ FIRST_ENTRY_FAIL_MACHINE_STATE,    67
+.equ FIRST_ENTRY_FAIL_HEADER,           68
+.equ FIRST_ENTRY_FAIL_IMAGE,            69
+.equ FIRST_ENTRY_FAIL_STACK,            70
+.equ FIRST_ENTRY_FAIL_CONSOLE_SECTION,  71
+.equ FIRST_ENTRY_FAIL_CONSOLE_RECORD,   72
+
 .section .text.burrow_aarch64_entry, "ax", %progbits
 .p2align 2
 .global burrow_aarch64_entry
@@ -63,22 +72,22 @@ burrow_aarch64_entry:
     stp x20, x21, [x4]
     stp x22, x23, [x4, #16]
 
-    cbz x20, .Lwait
+    cbz x20, .Lfail_registers
     tst x20, #7
-    b.ne .Lwait
+    b.ne .Lfail_registers
     orr x4, x1, x2
     orr x4, x4, x3
-    cbnz x4, .Lwait
+    cbnz x4, .Lfail_registers
     cmp x21, #4
     b.eq .Lcurrent_el_valid
     cmp x21, #8
-    b.ne .Lwait
+    b.ne .Lfail_exception_level
 .Lcurrent_el_valid:
     tst x22, #15
-    b.ne .Lwait
+    b.ne .Lfail_machine_state
     and x4, x23, #0x3c0
     cmp x4, #0x3c0
-    b.ne .Lwait
+    b.ne .Lfail_machine_state
 
     ldr x4, [x20]
     movz x5, #(BOOT_MAGIC & 0xffff)
@@ -86,108 +95,108 @@ burrow_aarch64_entry:
     movk x5, #((BOOT_MAGIC >> 32) & 0xffff), lsl #32
     movk x5, #((BOOT_MAGIC >> 48) & 0xffff), lsl #48
     cmp x4, x5
-    b.ne .Lwait
+    b.ne .Lfail_header
     ldrh w4, [x20, #HEADER_MAJOR]
     cmp w4, #BOOT_MAJOR
-    b.ne .Lwait
+    b.ne .Lfail_header
     ldr w4, [x20, #HEADER_SIZE]
     cmp w4, #BOOT_HEADER_SIZE
-    b.ne .Lwait
+    b.ne .Lfail_header
     ldr w19, [x20, #TOTAL_SIZE]
     cmp w19, #BOOT_HEADER_SIZE
-    b.lo .Lwait
+    b.lo .Lfail_header
     ldr w4, [x20, #PAGE_SIZE]
     cmp w4, #BOOT_PAGE_SIZE
-    b.ne .Lwait
+    b.ne .Lfail_header
     ldr x4, [x20, #PRESENT_FEATURES]
     tst x4, #BOOT_FEATURE_EARLY_CONSOLE
-    b.eq .Lwait
+    b.eq .Lfail_header
     ldr x4, [x20, #SELF_PHYSICAL_ADDRESS]
     cmp x4, x20
-    b.ne .Lwait
+    b.ne .Lfail_header
 
     ldr x7, [x20, #KERNEL_PHYSICAL_START]
     ldr x8, [x20, #KERNEL_PHYSICAL_SIZE]
-    cbz x8, .Lwait
+    cbz x8, .Lfail_image
     tst x7, #(BOOT_PAGE_SIZE - 1)
-    b.ne .Lwait
+    b.ne .Lfail_image
     tst x8, #(BOOT_PAGE_SIZE - 1)
-    b.ne .Lwait
+    b.ne .Lfail_image
     adds x9, x7, x8
-    b.cs .Lwait
+    b.cs .Lfail_image
     ldr x10, [x20, #KERNEL_ENTRY]
     adrp x11, burrow_aarch64_entry
     add x11, x11, :lo12:burrow_aarch64_entry
     cmp x10, x11
-    b.ne .Lwait
+    b.ne .Lfail_image
     cmp x10, x7
-    b.lo .Lwait
+    b.lo .Lfail_image
     cmp x10, x9
-    b.hs .Lwait
+    b.hs .Lfail_image
     ldr x4, [x20, #KERNEL_LOAD_BIAS]
     cmp x4, x7
-    b.ne .Lwait
+    b.ne .Lfail_image
 
     ldr x4, [x20, #STACK_PHYSICAL_START]
     ldr x5, [x20, #STACK_SIZE]
-    cbz x5, .Lwait
+    cbz x5, .Lfail_stack
     tst x4, #(BOOT_PAGE_SIZE - 1)
-    b.ne .Lwait
+    b.ne .Lfail_stack
     tst x5, #(BOOT_PAGE_SIZE - 1)
-    b.ne .Lwait
+    b.ne .Lfail_stack
     adds x4, x4, x5
-    b.cs .Lwait
+    b.cs .Lfail_stack
     cmp x4, x22
-    b.ne .Lwait
+    b.ne .Lfail_stack
 
     add x6, x20, #EARLY_CONSOLE_SECTION
     ldr w7, [x6, #SECTION_OFFSET]
     cmp w7, #BOOT_HEADER_SIZE
-    b.lo .Lwait
+    b.lo .Lfail_console_section
     tst w7, #7
-    b.ne .Lwait
+    b.ne .Lfail_console_section
     ldr w4, [x6, #SECTION_COUNT]
     cmp w4, #1
-    b.ne .Lwait
+    b.ne .Lfail_console_section
     ldr w4, [x6, #SECTION_STRIDE]
     cmp w4, #CONSOLE_SIZE
-    b.ne .Lwait
+    b.ne .Lfail_console_section
     ldr w4, [x6, #SECTION_RESERVED]
-    cbnz w4, .Lwait
+    cbnz w4, .Lfail_console_section
     adds w4, w7, #CONSOLE_SIZE
-    b.cs .Lwait
+    b.cs .Lfail_console_section
     cmp w4, w19
-    b.hi .Lwait
+    b.hi .Lfail_console_section
     adds x6, x20, x7
-    b.cs .Lwait
+    b.cs .Lfail_console_section
 
     ldr w4, [x6, #CONSOLE_KIND]
     cmp w4, #BOOT_CONSOLE_PL011
-    b.ne .Lwait
+    b.ne .Lfail_console_record
     ldr w4, [x6, #CONSOLE_FLAGS]
     tst w4, #BOOT_CONSOLE_OUTPUT
-    b.eq .Lwait
+    b.eq .Lfail_console_record
     bic w5, w4, #BOOT_CONSOLE_KNOWN_FLAGS
-    cbnz w5, .Lwait
+    cbnz w5, .Lfail_console_record
     ldr x24, [x6, #CONSOLE_PHYSICAL_ADDRESS]
-    cbz x24, .Lwait
+    cbz x24, .Lfail_console_record
     tst x24, #3
-    b.ne .Lwait
+    b.ne .Lfail_console_record
     adds x4, x24, #PL011_FLAG
-    b.cs .Lwait
+    b.cs .Lfail_console_record
     ldr w4, [x6, #CONSOLE_REGISTER_STRIDE]
     cmp w4, #4
-    b.ne .Lwait
+    b.ne .Lfail_console_record
     ldr w4, [x6, #CONSOLE_REGISTER_WIDTH]
     cmp w4, #32
-    b.ne .Lwait
+    b.ne .Lfail_console_record
     ldr w4, [x6, #CONSOLE_RESERVED_0]
-    cbnz w4, .Lwait
+    cbnz w4, .Lfail_console_record
     ldp x4, x5, [x6, #CONSOLE_RESERVED_1]
     ldr x6, [x6, #(CONSOLE_RESERVED_1 + 16)]
     orr x4, x4, x5
     orr x4, x4, x6
-    cbnz x4, .Lwait
+    cbnz x4, .Lfail_console_record
 
     adrp x25, .Ldiagnostic_prefix
     add x25, x25, :lo12:.Ldiagnostic_prefix
@@ -220,6 +229,36 @@ burrow_aarch64_entry:
 #if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
     mov x0, x24
     b burrow_qemu_test_result
+#endif
+
+.Lfail_registers:
+    mov w0, #FIRST_ENTRY_FAIL_REGISTERS
+    b .Lreport_first_entry_failure
+.Lfail_exception_level:
+    mov w0, #FIRST_ENTRY_FAIL_EXCEPTION_LEVEL
+    b .Lreport_first_entry_failure
+.Lfail_machine_state:
+    mov w0, #FIRST_ENTRY_FAIL_MACHINE_STATE
+    b .Lreport_first_entry_failure
+.Lfail_header:
+    mov w0, #FIRST_ENTRY_FAIL_HEADER
+    b .Lreport_first_entry_failure
+.Lfail_image:
+    mov w0, #FIRST_ENTRY_FAIL_IMAGE
+    b .Lreport_first_entry_failure
+.Lfail_stack:
+    mov w0, #FIRST_ENTRY_FAIL_STACK
+    b .Lreport_first_entry_failure
+.Lfail_console_section:
+    mov w0, #FIRST_ENTRY_FAIL_CONSOLE_SECTION
+    b .Lreport_first_entry_failure
+.Lfail_console_record:
+    mov w0, #FIRST_ENTRY_FAIL_CONSOLE_RECORD
+.Lreport_first_entry_failure:
+#if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
+    b burrow_qemu_test_failure
+#else
+    b .Lwait
 #endif
 
 .Lwait:

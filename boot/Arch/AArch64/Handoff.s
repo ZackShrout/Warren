@@ -105,6 +105,7 @@ warren_aarch64_handoff:
 .endef
 warren_aarch64_post_exit_failure:
     mov x12, x0
+    mov x13, x1
     adr x5, .Lpost_exit_failure_message
 .Lwrite_post_exit_failure:
     ldrb w6, [x5], #1
@@ -116,6 +117,9 @@ warren_aarch64_post_exit_failure:
     b .Lwrite_post_exit_failure
 .Lpost_exit_failure_wait:
     msr DAIFSet, #0xf
+    cbz x13, .Lpost_exit_failure_wait_loop
+    mov x0, x12
+    br x13
 .Lpost_exit_failure_wait_loop:
     wfe
     b .Lpost_exit_failure_wait_loop

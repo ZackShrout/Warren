@@ -218,6 +218,27 @@ requests `SYS_EXIT_EXTENDED` status zero. The host accepts the test only when th
 serial terminal record and QEMU status agree. Focused non-test Burrow artifacts
 contain neither the terminal marker, semihosting argument block, nor trap.
 
+The `burrow-first-entry` test owns these test-specific failure codes:
+
+| Code | Failure class |
+| ---: | --- |
+| `64` | Selected result-transport failure fixture |
+| `65` | Entry-register contract |
+| `66` | Unsupported exception level |
+| `67` | Stack alignment or DAIF machine state |
+| `68` | Fixed boot-information header |
+| `69` | Loaded-image extent, bias, or entry |
+| `70` | Bootstrap-stack description |
+| `71` | Early-console section bounds or shape |
+| `72` | Early-console record |
+| `73` | Loader post-exit failure containment fixture |
+
+Codes 65–72 are emitted only by QEMU platform test support after the assembly
+witness selects a failure class. The reporter uses the reference machine's
+fixed PL011 independently of the rejected object; ordinary Burrow images retain
+the same classifications but enter their masked wait because they contain no
+test transport.
+
 ## 10. Required Verification
 
 Host tests cover at least:
@@ -233,12 +254,17 @@ Host tests cover at least:
 - launch-error and timeout classifications.
 
 The target test matrix proves the exact AArch64 trap and argument block with
-pass, fail, and panic images. The current target fixtures all use the
-`burrow-first-entry` identifier and select `PASS`/0, `FAIL`/64, or `PANIC`/2 at
-build time. Each is packaged into its own ESP, boots through the same UEFI and
-AArch64 handoff, and is accepted only when the common host harness observes the
-expected serial/process pair. Focused non-test debug and release images are
-inspected to ensure that the semihosting trap and platform support are absent.
+pass, fail, and panic images. The transport fixtures select `PASS`/0, `FAIL`/64,
+or `PANIC`/2 at build time. A separate UEFI fixture corrupts the finalized magic
+after successful `ExitBootServices()` and requires Burrow to reject it with
+`FAIL`/68 without emitting its first-entry success diagnostic. A second clears
+the finalized console output flag and requires `FAIL`/72 through the independent
+QEMU reporter. Another enters the loader's real post-exit containment path and requires its direct PL011
+diagnostic plus `FAIL`/73 without entering Burrow. Each is packaged into its own
+ESP and accepted only when the common host harness observes the expected
+serial/process pair and route-specific output. Focused non-test debug and
+release images are inspected to ensure that semihosting and QEMU platform
+support are absent.
 
 ## 11. References
 

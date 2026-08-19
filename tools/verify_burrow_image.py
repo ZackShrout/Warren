@@ -120,6 +120,7 @@ MAXIMUM_U64 = 0xFFFFFFFFFFFFFFFF
 ENTRY_SYMBOL = "burrow_aarch64_entry"
 QEMU_SEMIHOST_HLT = bytes.fromhex("00005ed4")
 QEMU_PASS_MARKER = b"WARREN_TEST:1:PASS:burrow-first-entry\r\n\0"
+QEMU_FAILURE_MARKER_TEMPLATE = b"WARREN_TEST:1:FAIL:burrow-first-entry:00\r\n\0"
 QEMU_EXIT_ARGUMENTS = struct.pack("<QQ", 0x20026, 0)
 QEMU_RESULT_MARKERS = {
     "pass": QEMU_PASS_MARKER,
@@ -997,6 +998,15 @@ def _validate_qemu_test_result_transport(
             f"QEMU semihost HLT must be {requirement}, found {hlt_count}"
         )
 
+    failure_template_count = loaded_bytes.count(QEMU_FAILURE_MARKER_TEMPLATE)
+    expected_failure_template_count = 1 if mode is not None else 0
+    if failure_template_count != expected_failure_template_count:
+        requirement = "exactly once" if mode is not None else "absent"
+        raise VerificationError(
+            "QEMU first-entry failure marker template must be "
+            f"{requirement}, found {failure_template_count}"
+        )
+
     for result_mode in QEMU_RESULT_MARKERS:
         expected_count = 1 if mode == result_mode else 0
         requirement = "exactly once" if expected_count == 1 else "absent"
@@ -1172,12 +1182,35 @@ def verify_first_entry_disassembly(
         raise VerificationError(
             "Burrow first entry directly contains semihosting"
         )
+    for code in range(65, 73):
+        expected = f"mov w0, #0x{code:x}"
+        locations = [
+            index for index, instruction in enumerate(instructions)
+            if instruction == expected
+        ]
+        if len(locations) != 1:
+            raise VerificationError(
+                f"Burrow first entry must classify failure code {code} exactly once"
+            )
+        location = locations[0]
+        if location + 1 == len(instructions) or not instructions[location + 1].startswith("b "):
+            raise VerificationError(
+                f"Burrow first-entry failure code {code} does not terminate"
+            )
     branches_to_transport = [
         instruction for instruction in instructions
         if instruction.startswith("b ") and "burrow_qemu_test_result" in instruction
     ]
     if len(branches_to_transport) != (1 if qemu_test_result is not None else 0):
         raise VerificationError("Burrow first entry has an unexpected QEMU transport branch")
+    branches_to_failure_transport = [
+        instruction for instruction in instructions
+        if instruction.startswith("b ") and "burrow_qemu_test_failure" in instruction
+    ]
+    if len(branches_to_failure_transport) != (1 if qemu_test_result is not None else 0):
+        raise VerificationError(
+            "Burrow first entry has an unexpected QEMU failure-transport branch"
+        )
 
 
 def verify_qemu_result_disassembly(
@@ -1192,7 +1225,7 @@ def verify_qemu_result_disassembly(
     result = subprocess.run(
         [
             str(objdump),
-            "--disassemble-symbols=burrow_qemu_test_result",
+            "--disassemble-symbols=burrow_qemu_emit_result",
             "--no-show-raw-insn",
             str(image),
         ],
@@ -1215,7 +1248,7 @@ def verify_qemu_result_disassembly(
 
     cursor = 0
     for fragment in (
-        "mov x24, x0",
+        "bl ",
         "ldr w5, [x24, #0x18]",
         "tst w5, #0x8",
         "mov w0, #0x20",
@@ -1237,6 +1270,53 @@ def verify_qemu_result_disassembly(
     if any(instruction.startswith(("brk", "eret", "hvc", "smc", "svc"))
            for instruction in instructions):
         raise VerificationError("QEMU result transport uses an unexpected trap")
+
+    failure_result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble-symbols=burrow_qemu_test_failure",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if failure_result.returncode != 0:
+        raise VerificationError("could not disassemble the QEMU failure transport")
+
+    failure_instructions = []
+    for line in failure_result.stdout.splitlines():
+        if not re.match(r"^[0-9a-fA-F]+:", line.strip()):
+            continue
+        instruction = line.split(":", 1)[1].split("//", 1)[0].strip()
+        failure_instructions.append(re.sub(r"\s+", " ", instruction))
+    if not failure_instructions:
+        raise VerificationError("QEMU failure transport disassembly is empty")
+
+    for fragment in (
+        "cmp w0, #0x41",
+        "cmp w0, #0x48",
+        "mov x24, #0x9000000",
+        "udiv w7, w19, w6",
+        "msub w8, w7, w6, w19",
+        "strb w7, [x6]",
+        "strb w8, [x6, #0x1]",
+        "str x5, [x6, #0x8]",
+        "b ",
+        "msr DAIFSet, #0xf",
+        "wfe",
+    ):
+        if not any(fragment in instruction for instruction in failure_instructions):
+            raise VerificationError(
+                f"QEMU failure transport is missing instruction {fragment}"
+            )
+    if not any(
+        instruction.startswith("b ") and "burrow_qemu_emit_result" in instruction
+        for instruction in failure_instructions
+    ):
+        raise VerificationError("QEMU failure transport does not use the common emitter")
 
 
 def parse_arguments() -> argparse.Namespace:

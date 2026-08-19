@@ -76,3 +76,18 @@ maintenance instructions, overflow guards, CurrentEL and PL011 operations,
 exact final transfer sequence, and absence of calls/returns in the handoff. The
 link force-retains both symbols while the verifier separately requires each
 diagnostic string exactly once in the final EFI image.
+
+## 5. Post-Exit Failure Containment
+
+Any loader failure after the first `ExitBootServices()` attempt uses the
+separate `warren_aarch64_post_exit_failure` boundary. It writes
+`WARREN_POST_EXIT:FAIL` directly through the validated PL011, masks DAIF, and
+cannot call or return to firmware. Ordinary images then remain in a `WFE` loop.
+
+The assembly boundary accepts an internal optional nonreturning handler address.
+Production always supplies zero. The dedicated QEMU fixture supplies a
+platform-owned handler only after successful firmware exit; the boundary emits
+its normal failure diagnostic, masks DAIF, and branches to that handler, which
+reports `FAIL`/73 through the test protocol. Artifact verification requires the
+handler, marker, semihosting block, and HLT to be absent from ordinary UEFI
+images and present exactly once in the selected fixture.

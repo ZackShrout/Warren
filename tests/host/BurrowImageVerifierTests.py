@@ -28,6 +28,7 @@ from verify_burrow_image import (  # noqa: E402
     PROGRAM_HEADER,
     PROGRAM_TYPE_DYNAMIC,
     PROGRAM_TYPE_INTERPRETER,
+    QEMU_FAILURE_MARKER_TEMPLATE,
     QEMU_RESULT_ARGUMENTS,
     QEMU_RESULT_MARKERS,
     QEMU_SEMIHOST_HLT,
@@ -413,11 +414,20 @@ class BurrowImageFixtureTests(unittest.TestCase):
                 marker = QEMU_RESULT_MARKERS[mode]
                 arguments = QEMU_RESULT_ARGUMENTS[mode]
                 fixture.image[0x140 : 0x140 + len(marker)] = marker
-                fixture.image[0x180 : 0x180 + len(arguments)] = arguments
+                fixture.image[
+                    0x170 : 0x170 + len(QEMU_FAILURE_MARKER_TEMPLATE)
+                ] = QEMU_FAILURE_MARKER_TEMPLATE
+                fixture.image[0x1B0 : 0x1B0 + len(arguments)] = arguments
                 verify_image(bytes(fixture.image), qemu_test_result=mode)
 
     def test_non_test_image_rejects_each_qemu_result_component(self) -> None:
-        payloads = [(QEMU_SEMIHOST_HLT, "QEMU semihost HLT must be absent")]
+        payloads = [
+            (QEMU_SEMIHOST_HLT, "QEMU semihost HLT must be absent"),
+            (
+                QEMU_FAILURE_MARKER_TEMPLATE,
+                "QEMU first-entry failure marker template must be absent",
+            ),
+        ]
         for mode in QEMU_RESULT_MARKERS:
             payloads.extend((
                 (QEMU_RESULT_MARKERS[mode], f"QEMU {mode} marker must be absent"),
@@ -435,6 +445,9 @@ class BurrowImageFixtureTests(unittest.TestCase):
         fixture.image[TEXT_OFFSET : TEXT_OFFSET + len(QEMU_SEMIHOST_HLT)] = (
             QEMU_SEMIHOST_HLT
         )
+        fixture.image[
+            0x170 : 0x170 + len(QEMU_FAILURE_MARKER_TEMPLATE)
+        ] = QEMU_FAILURE_MARKER_TEMPLATE
         with self.assertRaisesRegex(VerificationError, "QEMU pass marker must be exactly once"):
             verify_image(bytes(fixture.image), qemu_test_result="pass")
 

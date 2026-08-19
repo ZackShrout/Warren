@@ -298,8 +298,19 @@ system-test orchestration. Its private `WARREN_QEMU_TEST_RESULT_MODE` selection
 is one of `pass`, `fail`, or `panic`; each mode chooses one exact terminal line
 and matching status block. The transport object lives under
 `kernel/src/Platform/QemuVirt` and is not compiled into ordinary Burrow.
+The same test object owns a bounded dynamic failure entry for witness codes
+65–72. That entry accepts only the allocated range, uses the QEMU-virt PL011
+base rather than trusting a rejected console record, emits the matching decimal
+code, and updates the shared semihosting argument block before the one common
+trap.
 
 Focused debug and release artifacts must contain no semihosting HLT, terminal
 test marker, exit argument block, or branch from first entry into the transport.
 The byte-level and disassembly artifact verifier enforces absence in ordinary
 products and the exact selected shape in every system-test child.
+The system matrix also packages a UEFI fault image that corrupts the finalized
+boot-information magic only after successful firmware exit. Its live QEMU test
+requires `FAIL`/68 and forbids the normal Burrow first-entry diagnostic, proving
+that consumer validation is independent of the loader's earlier validation. A
+second image clears the finalized console output flag and requires `FAIL`/72,
+proving that the fixed QEMU reporter does not use the rejected record.
