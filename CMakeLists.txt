@@ -74,6 +74,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/adr/0015-boot-information-v1-layout.md
     docs/adr/0016-initial-aarch64-virtual-memory-layout.md
     docs/specifications/AARCH64_BURROW_IMAGE.md
+    docs/specifications/AARCH64_LOADER_HANDOFF.md
     docs/specifications/BOOT_INFORMATION_V1.md
     docs/specifications/TEST_RESULT_PROTOCOL_V1.md
     kernel/linker/AArch64/burrow.ld
@@ -108,9 +109,11 @@ endif()
 
 if(NOT WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     add_library(WarrenBurrowLoader OBJECT
+        boot/include/warren/boot/AArch64Handoff.h
         boot/include/warren/boot/BootHandoffFinalization.h
         boot/include/warren/boot/BootHandoffStorage.h
         boot/include/warren/boot/BurrowLoader.h
+        boot/Loader/AArch64Handoff.cpp
         boot/Loader/BootHandoffFinalization.cpp
         boot/Loader/BootHandoffStorage.cpp
         boot/Loader/BurrowLoader.cpp
@@ -270,6 +273,25 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenBootHandoffFinalization
         COMMAND WarrenBootHandoffFinalizationTests
+    )
+
+    add_executable(WarrenAArch64HandoffTests
+        tests/host/AArch64HandoffTests.cpp
+    )
+    target_link_libraries(WarrenAArch64HandoffTests PRIVATE
+        WarrenBurrowLoader
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenAArch64HandoffTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenAArch64Handoff
+        COMMAND WarrenAArch64HandoffTests
     )
 
     add_test(
@@ -455,7 +477,18 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
 endif()
 
 if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
+    add_library(WarrenAArch64HandoffAssembly OBJECT
+        boot/Arch/AArch64/Handoff.s
+    )
+    target_compile_options(WarrenAArch64HandoffAssembly PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
     add_library(WarrenUefiBootloaderObject OBJECT
+        boot/Arch/AArch64/Handoff.cpp
         boot/uefi/Main.cpp
         boot/uefi/Memory.cpp
         boot/uefi/UefiHandoffFinalization.cpp
@@ -508,19 +541,26 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
             /entry:efi_main
             /nodefaultlib
             /Brepro
+            /include:warren_aarch64_synchronize_instruction_range
+            /include:warren_aarch64_handoff
             $<$<CONFIG:Debug>:/debug:dwarf>
             "/out:${_warren_uefi_image}"
+            $<TARGET_OBJECTS:WarrenAArch64HandoffAssembly>
             $<TARGET_OBJECTS:WarrenBurrowLoader>
             $<TARGET_OBJECTS:WarrenBootProtocol>
             $<TARGET_OBJECTS:WarrenUefiBootloaderObject>
         COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_uefi_image.py"
             --readobj "${WARREN_LLVM_READOBJ}"
+            --objdump "${WARREN_LLVM_OBJDUMP}"
+            --handoff-object $<TARGET_OBJECTS:WarrenAArch64HandoffAssembly>
             --image "${_warren_uefi_image}"
         DEPENDS
+            WarrenAArch64HandoffAssembly
             WarrenUefiBootloaderObject
             WarrenBurrowLoader
             WarrenBootProtocol
+            $<TARGET_OBJECTS:WarrenAArch64HandoffAssembly>
             $<TARGET_OBJECTS:WarrenBurrowLoader>
             $<TARGET_OBJECTS:WarrenBootProtocol>
             $<TARGET_OBJECTS:WarrenUefiBootloaderObject>
