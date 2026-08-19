@@ -97,6 +97,29 @@ warren_aarch64_handoff:
     wfe
     b .Lunsupported_el_wait_loop
 
+.p2align 2
+.globl warren_aarch64_post_exit_failure
+.def warren_aarch64_post_exit_failure
+.scl 2
+.type 32
+.endef
+warren_aarch64_post_exit_failure:
+    mov x12, x0
+    adr x5, .Lpost_exit_failure_message
+.Lwrite_post_exit_failure:
+    ldrb w6, [x5], #1
+    cbz w6, .Lpost_exit_failure_wait
+.Lwait_for_failure_transmit_space:
+    ldr w7, [x12, #0x18]
+    tbnz w7, #5, .Lwait_for_failure_transmit_space
+    str w6, [x12]
+    b .Lwrite_post_exit_failure
+.Lpost_exit_failure_wait:
+    msr DAIFSet, #0xf
+.Lpost_exit_failure_wait_loop:
+    wfe
+    b .Lpost_exit_failure_wait_loop
+
 .section .rdata,"dr"
 .p2align 2
 .Lel1_message:
@@ -105,3 +128,5 @@ warren_aarch64_handoff:
     .asciz "WARREN_POST_EXIT:ExitBootServices:EL2\r\n"
 .Lunsupported_el_message:
     .asciz "WARREN_POST_EXIT:ExitBootServices:EL?\r\n"
+.Lpost_exit_failure_message:
+    .asciz "WARREN_POST_EXIT:FAIL\r\n"

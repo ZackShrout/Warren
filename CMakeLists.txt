@@ -362,9 +362,17 @@ if(NOT CMAKE_CROSSCOMPILING)
 endif()
 
 if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
+    option(WARREN_ENABLE_QEMU_TEST_RESULT
+        "Enable Burrow's QEMU-only first-entry result transport"
+        OFF
+    )
+
     add_library(BurrowImageObjects OBJECT
         kernel/src/Arch/AArch64/Entry.s
         kernel/src/Core/ImageLayout.cpp
+    )
+    set_source_files_properties(kernel/src/Arch/AArch64/Entry.s PROPERTIES
+        COMPILE_OPTIONS "-x;assembler-with-cpp"
     )
     target_compile_options(BurrowImageObjects PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:-ffreestanding>
@@ -395,6 +403,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     )
     target_compile_definitions(BurrowImageObjects PRIVATE
         $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:NDEBUG>
+        $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>>:WARREN_ENABLE_QEMU_TEST_RESULT=1>
     )
 
     set(_burrow_artifact_directory "${CMAKE_CURRENT_BINARY_DIR}/artifacts")
@@ -433,6 +442,8 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             $<TARGET_OBJECTS:BurrowImageObjects>
         COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
+            --objdump "${CMAKE_OBJDUMP}"
+            $<$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>:--qemu-test-result>
             --image "${_burrow_symbol_image}"
         COMMAND "${CMAKE_OBJCOPY}"
             --strip-debug
@@ -440,6 +451,8 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             "${_burrow_runtime_image}"
         COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
+            --objdump "${CMAKE_OBJDUMP}"
+            $<$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>:--qemu-test-result>
             --runtime
             --image "${_burrow_runtime_image}"
             --reference-image "${_burrow_symbol_image}"
@@ -543,6 +556,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
             /Brepro
             /include:warren_aarch64_synchronize_instruction_range
             /include:warren_aarch64_handoff
+            /include:warren_aarch64_post_exit_failure
             $<$<CONFIG:Debug>:/debug:dwarf>
             "/out:${_warren_uefi_image}"
             $<TARGET_OBJECTS:WarrenAArch64HandoffAssembly>

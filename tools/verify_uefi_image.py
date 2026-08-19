@@ -129,11 +129,32 @@ def verify_handoff_assembly(arguments: argparse.Namespace) -> None:
            for instruction in handoff):
         raise RuntimeError("AArch64 handoff modifies an unexpected system register")
 
+    failure = disassemble_symbol(
+        arguments.objdump,
+        arguments.handoff_object,
+        "warren_aarch64_post_exit_failure",
+    )
+    require_order(
+        "post-exit failure containment",
+        failure,
+        (
+            "ldr w7, [x12, #0x18]",
+            "tbnz w7, #0x5",
+            "str w6, [x12]",
+            "msr DAIFSet, #0xf",
+            "wfe",
+        ),
+    )
+    if any(instruction.startswith(("bl ", "blr ", "ret", "brk", "hlt", "hvc", "smc", "svc"))
+           for instruction in failure):
+        raise RuntimeError("post-exit failure containment can call, return, or trap")
+
     image_bytes = arguments.image.read_bytes()
     for message in (
         b"WARREN_POST_EXIT:ExitBootServices:EL1\r\n\0",
         b"WARREN_POST_EXIT:ExitBootServices:EL2\r\n\0",
         b"WARREN_POST_EXIT:ExitBootServices:EL?\r\n\0",
+        b"WARREN_POST_EXIT:FAIL\r\n\0",
     ):
         if image_bytes.count(message) != 1:
             raise RuntimeError(f"UEFI image does not contain exactly one {message!r}")

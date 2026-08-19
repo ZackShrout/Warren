@@ -3,9 +3,14 @@
 // Copyright (c) 2026 BunnySoft. All rights reserved.
 //
 
+#include <warren/boot/AArch64Handoff.h>
+#include <warren/boot/BootHandoffFinalization.h>
+#include <warren/boot/BootHandoffStorage.h>
 #include <warren/boot/BurrowLoader.h>
 #include <warren/boot/Uefi.h>
 #include <warren/boot/UefiFile.h>
+#include <warren/boot/UefiHandoffFinalization.h>
+#include <warren/boot/UefiHandoffStorage.h>
 
 namespace {
     CHAR16 banner[]{
@@ -15,20 +20,14 @@ namespace {
 
     CHAR16 begin_marker[]{
         'W', 'A', 'R', 'R', 'E', 'N', '_', 'T', 'E', 'S', 'T', ':', '1', ':',
-        'B', 'E', 'G', 'I', 'N', ':', 'b', 'u', 'r', 'r', 'o', 'w', '-', 'l',
-        'o', 'a', 'd', 'e', 'r', '\r', '\n', 0
-    };
-
-    CHAR16 success_marker[]{
-        'W', 'A', 'R', 'R', 'E', 'N', '_', 'T', 'E', 'S', 'T', ':', '1', ':',
-        'P', 'A', 'S', 'S', ':', 'b', 'u', 'r', 'r', 'o', 'w', '-', 'l', 'o',
-        'a', 'd', 'e', 'r', '\r', '\n', 0
+        'B', 'E', 'G', 'I', 'N', ':', 'b', 'u', 'r', 'r', 'o', 'w', '-', 'f',
+        'i', 'r', 's', 't', '-', 'e', 'n', 't', 'r', 'y', '\r', '\n', 0
     };
 
     CHAR16 failure_marker[]{
         'W', 'A', 'R', 'R', 'E', 'N', '_', 'T', 'E', 'S', 'T', ':', '1', ':',
-        'F', 'A', 'I', 'L', ':', 'b', 'u', 'r', 'r', 'o', 'w', '-', 'l', 'o',
-        'a', 'd', 'e', 'r', ':', '6', '4', '\r', '\n', 0
+        'F', 'A', 'I', 'L', ':', 'b', 'u', 'r', 'r', 'o', 'w', '-', 'f', 'i',
+        'r', 's', 't', '-', 'e', 'n', 't', 'r', 'y', ':', '6', '4', '\r', '\n', 0
     };
 
     [[nodiscard]] EFI_STATUS write_ascii(EFI_SYSTEM_TABLE& system_table, const char* text) noexcept
@@ -140,6 +139,35 @@ namespace {
         for (uint64_t index{ 0 }; index < byte_count; ++index)
             pages[index] = 0;
     }
+
+    [[nodiscard]] bool probe_memory_map(EFI_SYSTEM_TABLE& system_table,
+                                        uint64_t& memory_map_size,
+                                        uint64_t& descriptor_size,
+                                        EFI_STATUS& status) noexcept
+    {
+        memory_map_size = 0;
+        descriptor_size = 0;
+
+        if (system_table.BootServices == nullptr ||
+            system_table.BootServices->GetMemoryMap == nullptr)
+        {
+            status = EFI_UNSUPPORTED;
+            return false;
+        }
+
+        UINTN map_size{ 0 };
+        UINTN map_key{ 0 };
+        UINTN firmware_descriptor_size{ 0 };
+        UINT32 descriptor_version{ 0 };
+        status = system_table.BootServices->GetMemoryMap(
+            &map_size, nullptr, &map_key, &firmware_descriptor_size,
+            &descriptor_version);
+        memory_map_size = map_size;
+        descriptor_size = firmware_descriptor_size;
+        return status == EFI_BUFFER_TOO_SMALL && map_size != 0 &&
+               firmware_descriptor_size != 0 &&
+               descriptor_version == EFI_MEMORY_DESCRIPTOR_VERSION;
+    }
 } // anonymous namespace
 
 extern "C" EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_table) noexcept
@@ -149,6 +177,14 @@ extern "C" EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE*
     using warren::boot::burrow_load_plan_t;
     using warren::boot::burrow_loaded_image_t;
     using warren::boot::byte_source_t;
+    using warren::boot::aarch64_executable_range_t;
+    using warren::boot::aarch64_handoff_arguments_t;
+    using warren::boot::aarch64_handoff_error_t;
+    using warren::boot::boot_handoff_finalization_error_t;
+    using warren::boot::boot_handoff_finalization_result_t;
+    using warren::boot::boot_handoff_storage_error_t;
+    using warren::boot::boot_handoff_storage_plan_t;
+    using warren::boot::boot_handoff_storage_t;
     using warren::boot::materialize_burrow_image;
     using warren::boot::plan_burrow_image;
     using warren::boot::uefi::close_burrow_file;
@@ -267,9 +303,142 @@ extern "C" EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE*
     if (EFI_ERROR(status))
         fail_and_shutdown(*system_table, "BURROW_DIAGNOSTIC", "console-write-failed", status);
 
-    status = warren::boot::uefi::write(*system_table, success_marker);
+    uint64_t estimated_memory_map_size{ 0 };
+    uint64_t memory_descriptor_size{ 0 };
+    if (!probe_memory_map(
+            *system_table,
+            estimated_memory_map_size,
+            memory_descriptor_size,
+            status))
+    {
+        clear_pages(destination, plan.allocation_size);
+        static_cast<void>(system_table->BootServices->FreePages(
+            physical_start, static_cast<UINTN>(page_count)));
+        fail_and_shutdown(*system_table, "BURROW_HANDOFF_PLAN", "memory-map-probe-failed", status);
+    }
 
-    if (EFI_ERROR(status)) return status;
+    const warren_boot_early_console_t early_console{
+        WARREN_BOOT_CONSOLE_PL011,
+        WARREN_BOOT_CONSOLE_OUTPUT,
+        UINT64_C(0x09000000),
+        4,
+        32,
+        0,
+        0,
+        0,
+        { 0, 0, 0 },
+    };
+    boot_handoff_storage_plan_t storage_plan{ };
+    const boot_handoff_storage_error_t storage_plan_result{
+        warren::boot::plan_boot_handoff_storage(
+            estimated_memory_map_size,
+            memory_descriptor_size,
+            true,
+            storage_plan)
+    };
+    if (storage_plan_result != boot_handoff_storage_error_t::success)
+    {
+        clear_pages(destination, plan.allocation_size);
+        static_cast<void>(system_table->BootServices->FreePages(
+            physical_start, static_cast<UINTN>(page_count)));
+        fail_and_shutdown(
+            *system_table,
+            "BURROW_HANDOFF_PLAN",
+            "storage-plan-failed",
+            static_cast<uint32_t>(storage_plan_result));
+    }
 
-    reset_and_wait(*system_table, EFI_SUCCESS);
+    boot_handoff_storage_t storage{ };
+    const boot_handoff_storage_error_t allocation_result{
+        warren::boot::uefi::allocate_handoff_storage(
+            *system_table, storage_plan, storage, status)
+    };
+    if (allocation_result != boot_handoff_storage_error_t::success)
+    {
+        clear_pages(destination, plan.allocation_size);
+        static_cast<void>(system_table->BootServices->FreePages(
+            physical_start, static_cast<UINTN>(page_count)));
+        fail_and_shutdown(*system_table, "BURROW_HANDOFF_ALLOCATE", "storage-allocation-failed", status);
+    }
+
+    aarch64_executable_range_t executable_range{ };
+    aarch64_handoff_arguments_t handoff_arguments{ };
+    const aarch64_handoff_error_t preparation_result{
+        warren::boot::prepare_aarch64_handoff(
+            plan,
+            loaded_image,
+            storage,
+            early_console,
+            executable_range,
+            handoff_arguments)
+    };
+    if (preparation_result != aarch64_handoff_error_t::success ||
+        !warren::boot::synchronize_aarch64_instruction_cache(executable_range))
+    {
+        EFI_STATUS release_status{ EFI_SUCCESS };
+        static_cast<void>(warren::boot::uefi::release_handoff_storage(
+            *system_table, storage, release_status));
+        clear_pages(destination, plan.allocation_size);
+        static_cast<void>(system_table->BootServices->FreePages(
+            physical_start, static_cast<UINTN>(page_count)));
+        fail_and_shutdown(
+            *system_table,
+            "BURROW_HANDOFF_PREPARE",
+            "aarch64-preparation-failed",
+            static_cast<uint32_t>(preparation_result));
+    }
+
+    boot_handoff_finalization_result_t finalization{ };
+    const boot_handoff_finalization_error_t finalization_result{
+        warren::boot::uefi::finalize_handoff(
+            image_handle,
+            *system_table,
+            loaded_image,
+            early_console,
+            storage,
+            finalization)
+    };
+    if (finalization_result != boot_handoff_finalization_error_t::success)
+    {
+        if (finalization.exit_attempted)
+            warren::boot::wait_after_aarch64_handoff_failure(
+                early_console.physical_address);
+
+        EFI_STATUS release_status{ EFI_SUCCESS };
+        static_cast<void>(warren::boot::uefi::release_handoff_storage(
+            *system_table, storage, release_status));
+        clear_pages(destination, plan.allocation_size);
+        static_cast<void>(system_table->BootServices->FreePages(
+            physical_start, static_cast<UINTN>(page_count)));
+        uint64_t failure_status{ finalization.platform_status };
+        if (failure_status == 0)
+        {
+            failure_status = finalization_result == boot_handoff_finalization_error_t::producer_failed
+                                 ? static_cast<uint32_t>(finalization.producer_error)
+                                 : static_cast<uint32_t>(finalization_result);
+        }
+        fail_and_shutdown(
+            *system_table,
+            "BURROW_HANDOFF_FINALIZE",
+            "boot-services-finalization-failed",
+            failure_status);
+    }
+
+    // A pre-exit map growth may have replaced the object allocation. Rebuild
+    // the pure handoff arguments from the final storage without touching
+    // firmware, then cross the assembly-only transfer boundary.
+    const aarch64_handoff_error_t final_preparation_result{
+        warren::boot::prepare_aarch64_handoff(
+            plan,
+            loaded_image,
+            storage,
+            early_console,
+            executable_range,
+            handoff_arguments)
+    };
+    if (final_preparation_result != aarch64_handoff_error_t::success)
+        warren::boot::wait_after_aarch64_handoff_failure(
+            early_console.physical_address);
+
+    warren::boot::transfer_to_burrow(handoff_arguments);
 }

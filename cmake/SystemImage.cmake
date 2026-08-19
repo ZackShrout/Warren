@@ -51,6 +51,7 @@ add_custom_target(WarrenSystemBurrow
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchains/AArch64Warren.cmake
         -DWARREN_BUILD_ENVIRONMENT=burrow
+        -DWARREN_ENABLE_QEMU_TEST_RESULT=ON
     COMMAND "${CMAKE_COMMAND}"
         --build "${_warren_burrow_build}"
         --target BurrowImage
@@ -148,16 +149,16 @@ add_test(
 set_tests_properties(WarrenSystemEspReproducibility PROPERTIES TIMEOUT 20)
 
 add_test(
-    NAME WarrenSystemBurrowLoader
+    NAME WarrenSystemBurrowFirstEntry
     COMMAND "${WARREN_HOST_PYTHON}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_uefi_smoke.py"
         --qemu "${WARREN_QEMU_AARCH64}"
         --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_esp}"
-        --expected-test burrow-loader
+        --expected-test burrow-first-entry
 )
-set_tests_properties(WarrenSystemBurrowLoader PROPERTIES TIMEOUT 40)
+set_tests_properties(WarrenSystemBurrowFirstEntry PROPERTIES TIMEOUT 40)
 
 unset(_required_path)
 unset(_warren_artifact_directory)

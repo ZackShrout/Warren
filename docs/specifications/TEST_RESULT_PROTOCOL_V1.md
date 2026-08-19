@@ -19,9 +19,7 @@ failed.
 
 Version 1 governs Phase 1 and later reference TCG system tests. It does not
 define ordinary Warren shutdown, a physical-machine interface, a syscall, or an
-SDK service. The existing UEFI pipeline smoke test may use the serial grammar
-without semihosting while it remains explicitly classified as a pre-Burrow
-pipeline test.
+SDK service.
 
 ## 2. Serial Encoding
 
@@ -202,20 +200,23 @@ The harness prints captured output and its classification on every non-pass
 path. It preserves the guest result code as diagnostic metadata even though the
 harness status reports the broader class.
 
-## 9. Current UEFI Loader Compatibility
+## 9. Current First-Entry System Test
 
-The combined UEFI loader image conforms to the serial record syntax and emits:
+The combined UEFI/Burrow system image emits:
 
 ```text
-WARREN_TEST:1:BEGIN:burrow-loader
-WARREN_TEST:1:PASS:burrow-loader
+WARREN_TEST:1:BEGIN:burrow-first-entry
+WARREN_TEST:1:PASS:burrow-first-entry
 ```
 
-The pass appears only after the packaged runtime ELF has been opened, validated,
-allocated, copied, zero-filled, and relocated. The host additionally requires a
-clean firmware-driven QEMU shutdown. This path does not enable semihosting and
-therefore does not claim the two-channel Phase 1 contract. The focused UEFI-only
-ESP contains no Burrow payload and has no successful system-boot marker.
+The loader emits `BEGIN` before opening the packaged runtime ELF. Burrow emits
+`PASS` only after the image has been validated and materialized, the final boot
+information object has been built and validated, UEFI boot services have ended,
+the AArch64 handoff has installed the declared stack and registers, and the
+first-entry witness has checked the directly observable contract. Burrow then
+requests `SYS_EXIT_EXTENDED` status zero. The host accepts the test only when the
+serial terminal record and QEMU status agree. Focused non-test Burrow artifacts
+contain neither the terminal marker, semihosting argument block, nor trap.
 
 ## 10. Required Verification
 

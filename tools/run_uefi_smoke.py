@@ -48,6 +48,8 @@ def main() -> int:
             "none",
             "-monitor",
             "none",
+            "-semihosting-config",
+            "enable=on,target=native",
             "-serial",
             "stdio",
             "-no-reboot",

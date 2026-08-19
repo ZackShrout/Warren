@@ -17,6 +17,9 @@ extern "C" [[noreturn]] void warren_aarch64_handoff(
     uint64_t bootstrap_stack_top,
     uint64_t pl011_physical_address) noexcept;
 
+extern "C" [[noreturn]] void warren_aarch64_post_exit_failure(
+    uint64_t pl011_physical_address) noexcept;
+
 namespace warren::boot {
     bool synchronize_aarch64_instruction_cache(
         const aarch64_executable_range_t& executable_range) noexcept
@@ -38,5 +41,11 @@ namespace warren::boot {
             arguments.entry_physical_address,
             arguments.bootstrap_stack_top,
             arguments.pl011_physical_address);
+    }
+
+    [[noreturn]] void wait_after_aarch64_handoff_failure(
+        uint64_t pl011_physical_address) noexcept
+    {
+        warren_aarch64_post_exit_failure(pl011_physical_address);
     }
 } // namespace warren::boot

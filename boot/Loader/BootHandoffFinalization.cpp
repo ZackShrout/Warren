@@ -69,6 +69,24 @@ namespace warren::boot {
                     return boot_handoff_finalization_error_t::invalid_memory_descriptor;
             }
 
+            // UEFI does not require the memory-map array to be ordered by
+            // physical address. Warren's producer consumes one canonical
+            // order so overlap checks, overlays, and coalescing stay bounded
+            // and deterministic across firmware implementations.
+            for (uint32_t index{ 1 }; index < count; ++index)
+            {
+                const boot_information_source_descriptor_t value{ descriptors[index] };
+                uint32_t insertion{ index };
+
+                while (insertion > 0 &&
+                       descriptors[insertion - 1].physical_start > value.physical_start)
+                {
+                    descriptors[insertion] = descriptors[insertion - 1];
+                    --insertion;
+                }
+                descriptors[insertion] = value;
+            }
+
             descriptor_count = static_cast<uint32_t>(count);
             return boot_handoff_finalization_error_t::success;
         }

@@ -54,4 +54,9 @@ namespace warren::boot {
 
     [[noreturn]] void transfer_to_burrow(
         const aarch64_handoff_arguments_t& arguments) noexcept;
+
+    // This path is valid after the first ExitBootServices() attempt and never
+    // calls firmware, returns, or attempts a second result transport.
+    [[noreturn]] void wait_after_aarch64_handoff_failure(
+        uint64_t pl011_physical_address) noexcept;
 } // namespace warren::boot

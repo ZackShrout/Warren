@@ -98,10 +98,12 @@ The build keeps Burrow and UEFI in separate compiler environments, then places
 `build/system-aarch64-debug/artifacts/warren-system-esp.img`. CTest extracts and
 compares both packaged payloads, rebuilds the ESP twice for byte equality, runs
 the production loader against the generated runtime ELF on the host, and boots
-it on the pinned QEMU machine. Matching `BEGIN` and `PASS` records for
-`burrow-loader` require successful file access, validation, allocation,
-materialization, and clean firmware shutdown. They do not claim that Burrow ran
-or that boot services ended.
+it on the pinned QEMU machine. The combined test requires matching serial and
+process results for `burrow-first-entry`: UEFI loads Burrow, constructs and
+validates the final boot-information object, exits boot services, and transfers
+through the reviewed AArch64 boundary; Burrow then validates the directly
+observable entry state and reports the terminal result. The system-only Burrow
+child contains the QEMU result transport. Focused Burrow products do not.
 
 The `aarch64-debug` and `uefi-aarch64-debug` presets remain available for
 focused product builds. The Burrow, UEFI, and system profiles each have a

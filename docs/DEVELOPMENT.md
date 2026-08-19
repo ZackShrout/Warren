@@ -103,12 +103,17 @@ environment.
 CTest extracts the bootloader and runtime ELF from the combined ESP and compares
 their bytes to the selected inputs, proves complete ESP reproducibility,
 materializes the generated runtime ELF through the production C++ loader on the
-host, and runs the combined `burrow-loader` QEMU test. The firmware result proves
-fixed-path file access, loader validation, allocation, copying, zero-fill, and
-relocation before clean shutdown. It does not mean Burrow executed, boot
-services ended, or boot information exists. The host profile also exercises
-independent malformed loader fixtures, the artifact verifier, ESP input
-failures, the boot-information ABI, the serial classifier, and toolchain gates.
+host, and runs the combined `burrow-first-entry` QEMU test. That gate requires
+the post-exit loader diagnostic, Burrow's first-entry witness, and agreement
+between Burrow's terminal PL011 record and QEMU semihosting status. The host
+profile also exercises independent malformed loader fixtures, handoff storage
+and finalization, the artifact verifier, ESP input failures, the
+boot-information ABI, the serial classifier, and toolchain gates.
+
+The combined system build explicitly enables the test-only QEMU transport in
+its Burrow child. Focused `aarch64-debug` and `aarch64-release` products leave
+that option off, and their artifact verification rejects the semihosting trap,
+terminal marker, and argument block.
 
 Focused profiles remain supported:
 

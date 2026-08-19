@@ -28,6 +28,9 @@ from verify_burrow_image import (  # noqa: E402
     PROGRAM_HEADER,
     PROGRAM_TYPE_DYNAMIC,
     PROGRAM_TYPE_INTERPRETER,
+    QEMU_EXIT_ARGUMENTS,
+    QEMU_PASS_MARKER,
+    QEMU_SEMIHOST_HLT,
     RELOCATION_AARCH64_RELATIVE,
     SECTION_FLAG_ALLOCATE,
     SECTION_FLAG_EXECUTE,
@@ -399,6 +402,37 @@ class BurrowImageFixtureTests(unittest.TestCase):
     def test_accepts_image_without_dynamic_metadata_or_relocations(self) -> None:
         summary = verify_image(bytes(build_fixture(dynamic=False).image))
         self.assertEqual(summary.relocation_count, 0)
+
+    def test_accepts_complete_isolated_qemu_result_transport(self) -> None:
+        fixture = build_fixture()
+        fixture.image[TEXT_OFFSET : TEXT_OFFSET + len(QEMU_SEMIHOST_HLT)] = (
+            QEMU_SEMIHOST_HLT
+        )
+        fixture.image[0x140 : 0x140 + len(QEMU_PASS_MARKER)] = QEMU_PASS_MARKER
+        fixture.image[0x180 : 0x180 + len(QEMU_EXIT_ARGUMENTS)] = (
+            QEMU_EXIT_ARGUMENTS
+        )
+        verify_image(bytes(fixture.image), qemu_test_result=True)
+
+    def test_non_test_image_rejects_each_qemu_result_component(self) -> None:
+        for payload, message in (
+            (QEMU_SEMIHOST_HLT, "QEMU semihost HLT must be absent"),
+            (QEMU_PASS_MARKER, "QEMU pass marker must be absent"),
+            (QEMU_EXIT_ARGUMENTS, "QEMU exit argument block must be absent"),
+        ):
+            with self.subTest(message=message):
+                fixture = build_fixture()
+                fixture.image[0x140 : 0x140 + len(payload)] = payload
+                with self.assertRaisesRegex(VerificationError, message):
+                    verify_image(bytes(fixture.image))
+
+    def test_test_image_rejects_incomplete_qemu_result_transport(self) -> None:
+        fixture = build_fixture()
+        fixture.image[TEXT_OFFSET : TEXT_OFFSET + len(QEMU_SEMIHOST_HLT)] = (
+            QEMU_SEMIHOST_HLT
+        )
+        with self.assertRaisesRegex(VerificationError, "QEMU pass marker must be exactly once"):
+            verify_image(bytes(fixture.image), qemu_test_result=True)
 
     def test_accepts_hidden_entry_localized_by_the_linker(self) -> None:
         fixture = build_fixture()

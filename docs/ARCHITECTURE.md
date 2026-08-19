@@ -1,16 +1,17 @@
 # Warren Architecture
 
-**Status:** Phase 0 contracts accepted; Phase 1 image loading implemented
+**Status:** Phase 0 contracts accepted; Phase 1 first entry implemented
 
 **Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
 
 **Future target:** x86-64, selected only after the shared boundaries are proven
 
 This document describes the direction in which Warren begins. The UEFI
-bootloader now loads—but does not enter—the audited Burrow ELF image. Canonical
-boot-information declarations and validators and host-side contract tests also
-exist. Stable decisions are recorded in `docs/adr/`, and exact subordinate
-formats live in `docs/specifications/`.
+bootloader now loads and enters the audited Burrow ELF image through the
+accepted physical handoff. Burrow's assembly witness stops before execution
+normalization or architecture-neutral kernel entry. Stable decisions are
+recorded in `docs/adr/`, and exact subordinate formats live in
+`docs/specifications/`.
 
 ## Architectural Shape
 
@@ -99,9 +100,8 @@ removable-media path `EFI/BOOT/BOOTAA64.EFI` in a deterministic FAT32 image. It
 contains no Burrow payload and is a structural and reproducibility surface, not
 a successful system boot. The combined system image additionally packages
 Burrow at `EFI/WARREN/BURROW.ELF`. Only that combined image owns the current
-`burrow-loader` QEMU result. The host parses the accepted record grammar, but
-firmware shutdown remains a compatibility transport rather than Burrow's later
-PL011 plus semihosting result transport.
+`burrow-first-entry` QEMU result. Burrow emits the terminal serial record and
+uses the test-only semihosting exit; the host requires both channels to agree.
 
 Burrow is built as a static position-independent ELF64 `ET_DYN` image with
 separate read-only, executable, and writable load pages. The current minimal
@@ -116,9 +116,14 @@ fixed Warren path. An EFI-neutral bounded-byte reader validates the ELF64
 program headers, load classes, dynamic table, and optional relative-relocation
 table. Firmware chooses one contiguous page extent; the shared materializer
 zeroes it, copies the three loads, applies `R_AARCH64_RELATIVE`, and reports the
-physical extent, load bias, and relocated entry. It does not construct boot
-information, obtain the final memory map, call `ExitBootServices()`, install
-final permissions, or transfer control.
+physical extent, load bias, and relocated entry. The loader then allocates the
+bootstrap stack and handoff storage, normalizes the final UEFI memory map,
+constructs and validates boot information, exits boot services with bounded
+stale-key retry, synchronizes executable bytes, and transfers with the accepted
+AArch64 register and stack state. Burrow's first-entry assembly checks the fixed
+header prefix and PL011 record, records the observed EL and handoff state, and
+stops without installing vectors, changing translation state, or calling
+architecture-neutral C++.
 
 ## Source Layout
 

@@ -62,6 +62,7 @@ namespace
         bool zero_page_descriptor{ false };
         bool misaligned_descriptor{ false };
         bool omit_kernel_descriptor{ false };
+        bool unsorted_map{ false };
         storage_fixture_t* storage_fixture{ nullptr };
         bool last_resize_was_restricted{ false };
     };
@@ -166,6 +167,17 @@ namespace
                           storage.work_entries.page_count);
                 write_u64(memory_map, context.snapshot_descriptor_size * 4 + 0x18,
                           storage.object.page_count);
+            }
+
+            if (context.unsorted_map && !context.omit_kernel_descriptor)
+            {
+                for (uint64_t byte{ 0 }; byte < context.snapshot_descriptor_size; ++byte)
+                {
+                    const uint64_t last{ context.snapshot_descriptor_size * 5 + byte };
+                    const uint8_t temporary{ memory_map[byte] };
+                    memory_map[byte] = memory_map[last];
+                    memory_map[last] = temporary;
+                }
             }
         }
 
@@ -358,6 +370,20 @@ namespace
                              static_cast<uint32_t>(validate_boot_information(
                                  storage.object, result.object_size, storage.storage.object.physical_start)),
                              static_cast<uint32_t>(boot_information_error_t::success));
+        return passed;
+    }
+
+    bool run_unsorted_map_test() noexcept
+    {
+        storage_fixture_t storage{};
+        initialize_storage(storage);
+        firmware_fixture_t firmware{};
+        firmware.unsorted_map = true;
+        boot_handoff_finalization_result_t result{};
+        bool passed{ expect_error("unsorted firmware map", run_finalization(storage, firmware, result),
+                                  boot_handoff_finalization_error_t::success) };
+        passed &= expect_sequence("unsorted map call sequence", firmware, "GE");
+        passed &= expect_u32("unsorted map descriptor count", result.source_descriptor_count, 6);
         return passed;
     }
 
@@ -571,6 +597,7 @@ int main()
 {
     bool passed{ true };
     passed &= run_immediate_success_test();
+    passed &= run_unsorted_map_test();
     passed &= run_stale_retry_test();
     passed &= run_resize_tests();
     passed &= run_failure_tests();

@@ -12,7 +12,9 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import pathlib
+import re
 import struct
+import subprocess
 import sys
 
 
@@ -116,6 +118,9 @@ PAGE_SIZE = 4096
 IMAGE_LIMIT = 0x80000000
 MAXIMUM_U64 = 0xFFFFFFFFFFFFFFFF
 ENTRY_SYMBOL = "burrow_aarch64_entry"
+QEMU_SEMIHOST_HLT = bytes.fromhex("00005ed4")
+QEMU_PASS_MARKER = b"WARREN_TEST:1:PASS:burrow-first-entry\r\n\0"
+QEMU_EXIT_ARGUMENTS = struct.pack("<QQ", 0x20026, 0)
 
 _FORBIDDEN_PROGRAM_TYPES = {
     PROGRAM_TYPE_INTERPRETER: "PT_INTERP",
@@ -964,7 +969,36 @@ def _parse_dynamic_metadata(
     return relocations
 
 
-def verify_image(image: bytes, *, runtime: bool = False) -> ImageSummary:
+def _validate_qemu_test_result_transport(
+    reader: Reader,
+    loads: list[ProgramHeader],
+    *,
+    enabled: bool,
+) -> None:
+    loaded_bytes = b"".join(
+        reader.range(load.offset, load.file_size, f"PT_LOAD {load.index}")
+        for load in loads
+    )
+    expected_count = 1 if enabled else 0
+    for payload, description in (
+        (QEMU_SEMIHOST_HLT, "QEMU semihost HLT"),
+        (QEMU_PASS_MARKER, "QEMU pass marker"),
+        (QEMU_EXIT_ARGUMENTS, "QEMU exit argument block"),
+    ):
+        count = loaded_bytes.count(payload)
+        if count != expected_count:
+            requirement = "exactly once" if enabled else "absent"
+            raise VerificationError(
+                f"{description} must be {requirement}, found {count}"
+            )
+
+
+def verify_image(
+    image: bytes,
+    *,
+    runtime: bool = False,
+    qemu_test_result: bool = False,
+) -> ImageSummary:
     """Verify one complete Burrow image and return its audited shape."""
 
     reader = Reader(image)
@@ -978,6 +1012,9 @@ def verify_image(image: bytes, *, runtime: bool = False) -> ImageSummary:
     relocations = _parse_dynamic_metadata(
         reader, program_headers, sections, loads
     )
+    _validate_qemu_test_result_transport(
+        reader, loads, enabled=qemu_test_result
+    )
     return ImageSummary(
         entry=header.entry,
         load_segment_count=len(loads),
@@ -987,11 +1024,20 @@ def verify_image(image: bytes, *, runtime: bool = False) -> ImageSummary:
     )
 
 
-def verify_runtime_copy(symbol_image: bytes, runtime_image: bytes) -> None:
+def verify_runtime_copy(
+    symbol_image: bytes,
+    runtime_image: bytes,
+    *,
+    qemu_test_result: bool = False,
+) -> None:
     """Require debug stripping to preserve every loader-visible byte."""
 
-    symbol_summary = verify_image(symbol_image)
-    runtime_summary = verify_image(runtime_image, runtime=True)
+    symbol_summary = verify_image(
+        symbol_image, qemu_test_result=qemu_test_result
+    )
+    runtime_summary = verify_image(
+        runtime_image, runtime=True, qemu_test_result=qemu_test_result
+    )
     if symbol_summary.entry != runtime_summary.entry:
         raise VerificationError("runtime copy changes the ELF entry")
     if symbol_summary.relocation_count != runtime_summary.relocation_count:
@@ -1038,11 +1084,97 @@ def verify_runtime_copy(symbol_image: bytes, runtime_image: bytes) -> None:
             )
 
 
+def verify_first_entry_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+    *,
+    qemu_test_result: bool,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            f"--disassemble-symbols={ENTRY_SYMBOL}",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble the Burrow first entry")
+
+    instructions: list[str] = []
+    for line in result.stdout.splitlines():
+        if not re.match(r"^[0-9a-fA-F]+:", line.strip()):
+            continue
+        instruction = line.split(":", 1)[1].split("//", 1)[0].strip()
+        instructions.append(re.sub(r"\s+", " ", instruction))
+    if not instructions:
+        raise VerificationError("Burrow first-entry disassembly is empty")
+
+    cursor = 0
+    for fragment in (
+        "mov x20, x0",
+        "mrs x21, CurrentEL",
+        "mrs x23, DAIF",
+        "stp x20, x21",
+        "msr DAIFSet, #0xf",
+        "wfe",
+    ):
+        while cursor < len(instructions) and fragment not in instructions[cursor]:
+            cursor += 1
+        if cursor == len(instructions):
+            raise VerificationError(
+                f"Burrow first entry is missing ordered instruction {fragment}"
+            )
+        cursor += 1
+
+    forbidden_registers = (
+        "VBAR_EL1",
+        "VBAR_EL2",
+        "SPSR_EL2",
+        "HCR_EL2",
+        "SCTLR_EL1",
+        "TCR_EL1",
+        "MAIR_EL1",
+        "TTBR0_EL1",
+        "TTBR1_EL1",
+    )
+    if any(instruction.startswith(("brk", "eret", "hvc", "smc", "svc"))
+           for instruction in instructions):
+        raise VerificationError("Burrow first entry contains a forbidden exception path")
+    if any(register in instruction for instruction in instructions
+           for register in forbidden_registers):
+        raise VerificationError("Burrow first entry modifies normalization state")
+
+    hlt_instructions = [
+        instruction for instruction in instructions if instruction.startswith("hlt")
+    ]
+    expected_hlt = ["hlt #0xf000"] if qemu_test_result else []
+    if hlt_instructions != expected_hlt:
+        raise VerificationError(
+            "Burrow first entry has an unexpected semihosting instruction shape"
+        )
+    if qemu_test_result:
+        cursor = 0
+        for fragment in ("mov w0, #0x20", "adr x1,", "hlt #0xf000"):
+            while cursor < len(instructions) and fragment not in instructions[cursor]:
+                cursor += 1
+            if cursor == len(instructions):
+                raise VerificationError(
+                    f"QEMU result path is missing ordered instruction {fragment}"
+                )
+            cursor += 1
+
+
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Verify Warren's AArch64 Burrow ELF image contract."
     )
     parser.add_argument("--image", required=True, type=pathlib.Path)
+    parser.add_argument("--objdump", required=True, type=pathlib.Path)
     parser.add_argument(
         "--reference-image",
         type=pathlib.Path,
@@ -1053,6 +1185,11 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="also reject debug, comment, and note metadata",
     )
+    parser.add_argument(
+        "--qemu-test-result",
+        action="store_true",
+        help="require the isolated first-entry QEMU result transport",
+    )
     return parser.parse_args()
 
 
@@ -1060,14 +1197,27 @@ def main() -> int:
     arguments = parse_arguments()
     try:
         image = arguments.image.read_bytes()
-        summary = verify_image(image, runtime=arguments.runtime)
+        summary = verify_image(
+            image,
+            runtime=arguments.runtime,
+            qemu_test_result=arguments.qemu_test_result,
+        )
+        verify_first_entry_disassembly(
+            arguments.objdump,
+            arguments.image,
+            qemu_test_result=arguments.qemu_test_result,
+        )
         if arguments.reference_image is not None:
             if not arguments.runtime:
                 raise VerificationError(
                     "--reference-image requires runtime-image verification"
                 )
             reference_image = arguments.reference_image.read_bytes()
-            verify_runtime_copy(reference_image, image)
+            verify_runtime_copy(
+                reference_image,
+                image,
+                qemu_test_result=arguments.qemu_test_result,
+            )
     except (OSError, VerificationError) as error:
         print(f"Burrow image verification failed: {error}", file=sys.stderr)
         return 1
