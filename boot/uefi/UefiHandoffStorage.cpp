@@ -96,4 +96,24 @@ namespace warren::boot::uefi {
                      : platform_status;
         return result;
     }
+
+    boot_handoff_storage_error_t resize_handoff_storage(
+        EFI_SYSTEM_TABLE& system_table,
+        const boot_handoff_storage_plan_t& plan,
+        bool retain_superseded_storage,
+        boot_handoff_storage_t& storage,
+        EFI_STATUS& status) noexcept
+    {
+        allocator_context_t context{ system_table.BootServices };
+        const boot_handoff_page_allocator_t allocator{ &context, allocate_pages, free_pages };
+        uint64_t platform_status{ 0 };
+        const boot_handoff_storage_error_t result{
+            resize_boot_handoff_storage(
+                plan, allocator, retain_superseded_storage, storage, platform_status)
+        };
+        status = result != boot_handoff_storage_error_t::success && platform_status == 0
+                     ? EFI_INVALID_PARAMETER
+                     : platform_status;
+        return result;
+    }
 } // namespace warren::boot::uefi

@@ -240,13 +240,32 @@ plus the reference early-console record. Every size, count, multiplication,
 rounding operation, and conversion to a protocol-width field is checked before
 firmware allocation.
 
-The stack, memory-map buffer, producer work entries, and protocol object use
-separate loader-owned page allocations. They are zeroed before use and must be
-pairwise disjoint. Before the first `ExitBootServices()` attempt, partial
-allocation failure unwinds in reverse order. A failed free remains recorded so
-cleanup can be retried or the retained allocation can be reported before
-firmware-controlled termination; no such cleanup is permitted after the first
-exit attempt.
+The stack, memory-map buffer, decoded source descriptors, producer work entries,
+and protocol object use separate loader-owned page allocations. They are zeroed
+before use and must be pairwise disjoint. Before the first
+`ExitBootServices()` attempt, partial allocation failure unwinds in reverse
+order. A failed free remains recorded so cleanup can be retried or the retained
+allocation can be reported before firmware-controlled termination; no such
+cleanup is permitted after the first exit attempt.
+
+The reference finalization transaction is bounded to eight storage resizes and
+eight `ExitBootServices()` attempts. Each successful `GetMemoryMap()` snapshot
+must use descriptor version 1, the planned descriptor stride, a whole number of
+descriptors, and checked iteration bounds. The loader decodes that exact raw
+snapshot into its owned source-descriptor storage, rebuilds the canonical
+object, and independently validates the result before using the snapshot's map
+key. No firmware callback occurs between that successful capture and the exit
+attempt.
+
+`EFI_BUFFER_TOO_SMALL` causes checked replacement map, decode, work, and object
+storage to be allocated while reusing the fixed bootstrap stack, then the
+transaction restarts from a new capture. Before the first exit attempt, the
+superseded capacity-dependent storage is released; afterward it is deliberately
+retained and becomes loader-reclaimable memory after successful exit, avoiding
+a forbidden general cleanup path in the restricted phase. `EFI_INVALID_PARAMETER` from
+`ExitBootServices()` is treated as a stale key: the old key is discarded, the
+map and object are rebuilt, and only the new key is retried. Any other exit
+failure is terminal.
 
 ## 7. Command Line
 

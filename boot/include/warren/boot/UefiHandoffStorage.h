@@ -15,6 +15,13 @@ namespace warren::boot::uefi {
         boot_handoff_storage_t& storage,
         EFI_STATUS& status) noexcept;
 
+    [[nodiscard]] boot_handoff_storage_error_t resize_handoff_storage(
+        EFI_SYSTEM_TABLE& system_table,
+        const boot_handoff_storage_plan_t& plan,
+        bool retain_superseded_storage,
+        boot_handoff_storage_t& storage,
+        EFI_STATUS& status) noexcept;
+
     // Cleanup is valid only before the first ExitBootServices() attempt.
     [[nodiscard]] boot_handoff_storage_error_t release_handoff_storage(
         EFI_SYSTEM_TABLE& system_table,

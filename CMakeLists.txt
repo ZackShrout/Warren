@@ -108,8 +108,10 @@ endif()
 
 if(NOT WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     add_library(WarrenBurrowLoader OBJECT
+        boot/include/warren/boot/BootHandoffFinalization.h
         boot/include/warren/boot/BootHandoffStorage.h
         boot/include/warren/boot/BurrowLoader.h
+        boot/Loader/BootHandoffFinalization.cpp
         boot/Loader/BootHandoffStorage.cpp
         boot/Loader/BurrowLoader.cpp
     )
@@ -218,6 +220,7 @@ if(NOT CMAKE_CROSSCOMPILING)
     )
     target_link_libraries(WarrenBurrowLoaderTests PRIVATE
         WarrenBurrowLoader
+        WarrenBootProtocol
     )
     target_compile_options(WarrenBurrowLoaderTests PRIVATE
         -Wall
@@ -248,6 +251,25 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenBootHandoffStorage
         COMMAND WarrenBootHandoffStorageTests
+    )
+
+    add_executable(WarrenBootHandoffFinalizationTests
+        tests/host/BootHandoffFinalizationTests.cpp
+    )
+    target_link_libraries(WarrenBootHandoffFinalizationTests PRIVATE
+        WarrenBurrowLoader
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenBootHandoffFinalizationTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenBootHandoffFinalization
+        COMMAND WarrenBootHandoffFinalizationTests
     )
 
     add_test(
@@ -436,8 +458,10 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
     add_library(WarrenUefiBootloaderObject OBJECT
         boot/uefi/Main.cpp
         boot/uefi/Memory.cpp
+        boot/uefi/UefiHandoffFinalization.cpp
         boot/uefi/UefiHandoffStorage.cpp
         boot/uefi/UefiFile.cpp
+        boot/include/warren/boot/UefiHandoffFinalization.h
         boot/include/warren/boot/UefiHandoffStorage.h
         boot/include/warren/boot/Uefi.h
         boot/include/warren/boot/UefiFile.h
@@ -446,6 +470,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
     target_include_directories(WarrenUefiBootloaderObject
         PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/boot/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
     )
     target_compile_options(WarrenUefiBootloaderObject PRIVATE
         "SHELL:-isystem ${WARREN_EDK2_INCLUDE}"
@@ -486,6 +511,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
             $<$<CONFIG:Debug>:/debug:dwarf>
             "/out:${_warren_uefi_image}"
             $<TARGET_OBJECTS:WarrenBurrowLoader>
+            $<TARGET_OBJECTS:WarrenBootProtocol>
             $<TARGET_OBJECTS:WarrenUefiBootloaderObject>
         COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_uefi_image.py"
@@ -494,7 +520,9 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
         DEPENDS
             WarrenUefiBootloaderObject
             WarrenBurrowLoader
+            WarrenBootProtocol
             $<TARGET_OBJECTS:WarrenBurrowLoader>
+            $<TARGET_OBJECTS:WarrenBootProtocol>
             $<TARGET_OBJECTS:WarrenUefiBootloaderObject>
             tools/verify_uefi_image.py
         COMMAND_EXPAND_LISTS

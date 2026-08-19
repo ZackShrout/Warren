@@ -19,6 +19,9 @@ namespace warren::boot {
         uint64_t memory_descriptor_size;
         uint32_t source_descriptor_capacity;
 
+        uint64_t source_page_count;
+        uint64_t source_capacity;
+
         uint64_t work_page_count;
         uint64_t work_capacity;
         uint32_t work_entry_capacity;
@@ -63,6 +66,7 @@ namespace warren::boot {
         boot_handoff_storage_plan_t plan;
         boot_handoff_allocation_t bootstrap_stack;
         boot_handoff_allocation_t memory_map;
+        boot_handoff_allocation_t source_descriptors;
         boot_handoff_allocation_t work_entries;
         boot_handoff_allocation_t object;
     };
@@ -89,9 +93,21 @@ namespace warren::boot {
         bool early_console_present,
         boot_handoff_storage_plan_t& plan) noexcept;
 
+    [[nodiscard]] bool boot_handoff_storage_is_valid(
+        const boot_handoff_storage_t& storage) noexcept;
+
     [[nodiscard]] boot_handoff_storage_error_t allocate_boot_handoff_storage(
         const boot_handoff_storage_plan_t& plan,
         const boot_handoff_page_allocator_t& allocator,
+        boot_handoff_storage_t& storage,
+        uint64_t& platform_status) noexcept;
+
+    // Reuses the bootstrap stack. Superseded capacity-dependent allocations are
+    // released only before the first ExitBootServices() attempt.
+    [[nodiscard]] boot_handoff_storage_error_t resize_boot_handoff_storage(
+        const boot_handoff_storage_plan_t& plan,
+        const boot_handoff_page_allocator_t& allocator,
+        bool retain_superseded_storage,
         boot_handoff_storage_t& storage,
         uint64_t& platform_status) noexcept;
 

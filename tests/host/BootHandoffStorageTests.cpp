@@ -27,10 +27,11 @@ namespace
     using warren::boot::plan_boot_handoff_storage;
     using warren::boot::produce_boot_information;
     using warren::boot::release_boot_handoff_storage;
+    using warren::boot::resize_boot_handoff_storage;
     using warren::boot::uefi_memory_type_t;
     using warren::boot::validate_boot_information;
 
-    constexpr uint32_t k_slot_count{ 4 };
+    constexpr uint32_t k_slot_count{ 9 };
     constexpr uint32_t k_slot_size{ 65536 };
     constexpr uint64_t k_fake_error_base{ 0x8000000000000100 };
 
@@ -186,6 +187,8 @@ namespace
         passed &= expect_u64("reference map capacity", plan.memory_map_capacity, 8192);
         passed &= expect_u64("reference descriptor size", plan.memory_descriptor_size, 40);
         passed &= expect_u32("reference source capacity", plan.source_descriptor_capacity, 204);
+        passed &= expect_u64("reference source pages", plan.source_page_count, 2);
+        passed &= expect_u64("reference source allocation", plan.source_capacity, 8192);
         passed &= expect_u64("reference work pages", plan.work_page_count, 3);
         passed &= expect_u64("reference work capacity", plan.work_capacity, 12288);
         passed &= expect_u32("reference work entries", plan.work_entry_capacity, 210);
@@ -237,10 +240,11 @@ namespace
                                   allocate_boot_handoff_storage(plan, allocator, storage, platform_status),
                                   boot_handoff_storage_error_t::success) };
         passed &= expect_u64("allocation platform status", platform_status, 0);
-        passed &= expect_u32("allocation call count", context.allocate_calls, 4);
+        passed &= expect_u32("allocation call count", context.allocate_calls, 5);
         passed &= expect_u64("bootstrap stack pages", storage.bootstrap_stack.page_count,
                              k_bootstrap_stack_page_count);
         passed &= expect_u64("map pages", storage.memory_map.page_count, plan.memory_map_page_count);
+        passed &= expect_u64("source pages", storage.source_descriptors.page_count, plan.source_page_count);
         passed &= expect_u64("work pages", storage.work_entries.page_count, plan.work_page_count);
         passed &= expect_u64("object pages", storage.object.page_count, plan.object_page_count);
         passed &= expect_true("bootstrap stack zeroed",
@@ -249,6 +253,9 @@ namespace
         passed &= expect_true("map storage zeroed",
                               allocation_is_zero(storage.memory_map.writable_start,
                                                  storage.memory_map.page_count * 4096));
+        passed &= expect_true("source storage zeroed",
+                              allocation_is_zero(storage.source_descriptors.writable_start,
+                                                 storage.source_descriptors.page_count * 4096));
         passed &= expect_true("work storage zeroed",
                               allocation_is_zero(storage.work_entries.writable_start,
                                                  storage.work_entries.page_count * 4096));
@@ -265,22 +272,24 @@ namespace
               static_cast<uint32_t>(uefi_memory_type_t::loader_data), 8 },
             { storage.memory_map.physical_start, storage.memory_map.page_count,
               static_cast<uint32_t>(uefi_memory_type_t::loader_data), 8 },
+            { storage.source_descriptors.physical_start, storage.source_descriptors.page_count,
+              static_cast<uint32_t>(uefi_memory_type_t::loader_data), 8 },
             { storage.work_entries.physical_start, storage.work_entries.page_count,
               static_cast<uint32_t>(uefi_memory_type_t::loader_data), 8 },
             { storage.object.physical_start, storage.object.page_count,
               static_cast<uint32_t>(uefi_memory_type_t::loader_data), 8 },
-            { 0x00500000, 2, static_cast<uint32_t>(uefi_memory_type_t::loader_data), 8 },
+            { 0x00600000, 2, static_cast<uint32_t>(uefi_memory_type_t::loader_data), 8 },
         };
         const warren_boot_early_console_t console{ make_console() };
         const boot_information_producer_input_t producer_input{
             descriptors,
-            5,
+            6,
             storage.object.physical_start,
             storage.object.page_count * 4096,
-            0x00500000,
+            0x00600000,
             0x2000,
             0x100000,
-            0x00500100,
+            0x00600100,
             storage.bootstrap_stack.physical_start,
             storage.bootstrap_stack.page_count * 4096,
             &console,
@@ -310,11 +319,12 @@ namespace
                                release_boot_handoff_storage(allocator, storage, platform_status),
                                boot_handoff_storage_error_t::success);
         passed &= expect_u64("release platform status", platform_status, 0);
-        passed &= expect_u32("release call count", context.free_calls, 4);
-        passed &= expect_u32("object released first", context.freed_slots[0], 3);
-        passed &= expect_u32("work released second", context.freed_slots[1], 2);
-        passed &= expect_u32("map released third", context.freed_slots[2], 1);
-        passed &= expect_u32("stack released last", context.freed_slots[3], 0);
+        passed &= expect_u32("release call count", context.free_calls, 5);
+        passed &= expect_u32("object released first", context.freed_slots[0], 4);
+        passed &= expect_u32("work released second", context.freed_slots[1], 3);
+        passed &= expect_u32("source released third", context.freed_slots[2], 2);
+        passed &= expect_u32("map released fourth", context.freed_slots[3], 1);
+        passed &= expect_u32("stack released last", context.freed_slots[4], 0);
         passed &= expect_u64("released storage cleared", storage.bootstrap_stack.physical_start, 0);
         return passed;
     }
@@ -324,7 +334,7 @@ namespace
         bool passed{ true };
         const boot_handoff_storage_plan_t plan{ make_plan() };
 
-        for (uint32_t failure_call{ 0 }; failure_call < 4; ++failure_call)
+        for (uint32_t failure_call{ 0 }; failure_call < 5; ++failure_call)
         {
             fake_allocator_t context{};
             prepare_allocator(context);
@@ -378,11 +388,66 @@ namespace
         return passed;
     }
 
+    bool run_resize_tests() noexcept
+    {
+        bool passed{ true };
+        fake_allocator_t context{};
+        prepare_allocator(context);
+        const boot_handoff_page_allocator_t allocator{ make_page_allocator(context) };
+        const boot_handoff_storage_plan_t initial_plan{ make_plan() };
+        boot_handoff_storage_plan_t replacement_plan{};
+        static_cast<void>(plan_boot_handoff_storage(16000, 40, true, replacement_plan));
+        boot_handoff_storage_t storage{};
+        uint64_t platform_status{ 0 };
+        passed &= expect_error("resize initial allocation",
+                               allocate_boot_handoff_storage(
+                                   initial_plan, allocator, storage, platform_status),
+                               boot_handoff_storage_error_t::success);
+        const uint64_t stack_start{ storage.bootstrap_stack.physical_start };
+        const uint8_t* stack_bytes{ storage.bootstrap_stack.writable_start };
+        passed &= expect_error("pre-exit resize",
+                               resize_boot_handoff_storage(
+                                   replacement_plan, allocator, false, storage, platform_status),
+                               boot_handoff_storage_error_t::success);
+        passed &= expect_u32("pre-exit replacement allocations", context.allocate_calls, 9);
+        passed &= expect_u32("pre-exit superseded frees", context.free_calls, 4);
+        passed &= expect_u64("resize reuses stack address", storage.bootstrap_stack.physical_start,
+                             stack_start);
+        passed &= expect_true("resize reuses stack bytes",
+                              storage.bootstrap_stack.writable_start == stack_bytes);
+        passed &= expect_u64("resize map pages", storage.memory_map.page_count,
+                             replacement_plan.memory_map_page_count);
+        passed &= expect_u32("old object released first", context.freed_slots[0], 4);
+        passed &= expect_u32("old map released last", context.freed_slots[3], 1);
+        passed &= expect_error("release resized storage",
+                               release_boot_handoff_storage(allocator, storage, platform_status),
+                               boot_handoff_storage_error_t::success);
+        passed &= expect_u32("all current allocations released", context.free_calls, 9);
+
+        context = {};
+        prepare_allocator(context);
+        storage = {};
+        passed &= expect_error("restricted initial allocation",
+                               allocate_boot_handoff_storage(
+                                   initial_plan, allocator, storage, platform_status),
+                               boot_handoff_storage_error_t::success);
+        passed &= expect_error("restricted resize",
+                               resize_boot_handoff_storage(
+                                   replacement_plan, allocator, true, storage, platform_status),
+                               boot_handoff_storage_error_t::success);
+        passed &= expect_u32("restricted resize does not free", context.free_calls, 0);
+        passed &= expect_true("restricted old map retained", context.active[1]);
+        passed &= expect_true("restricted old object retained", context.active[4]);
+        passed &= expect_u64("restricted resize reuses stack", storage.bootstrap_stack.physical_start,
+                             context.physical_starts[0]);
+        return passed;
+    }
+
     bool run_cleanup_failure_test() noexcept
     {
         fake_allocator_t context{};
         prepare_allocator(context);
-        context.fail_allocate_call = 3;
+        context.fail_allocate_call = 4;
         context.fail_free_call = 0;
         const boot_handoff_page_allocator_t allocator{ make_page_allocator(context) };
         const boot_handoff_storage_plan_t plan{ make_plan() };
@@ -393,7 +458,8 @@ namespace
                                   boot_handoff_storage_error_t::cleanup_failed) };
         passed &= expect_u64("cleanup failure status", platform_status, k_fake_error_base + 0x40);
         passed &= expect_u64("failed cleanup extent retained", storage.work_entries.physical_start,
-                             context.physical_starts[2]);
+                             context.physical_starts[3]);
+        passed &= expect_u64("successfully freed source cleared", storage.source_descriptors.physical_start, 0);
         passed &= expect_u64("successfully freed map cleared", storage.memory_map.physical_start, 0);
         passed &= expect_u64("successfully freed stack cleared", storage.bootstrap_stack.physical_start, 0);
 
@@ -412,6 +478,7 @@ int main()
     passed &= run_planning_tests();
     passed &= run_allocation_and_release_test();
     passed &= run_allocation_failure_tests();
+    passed &= run_resize_tests();
     passed &= run_cleanup_failure_test();
 
     if (!passed) return 1;

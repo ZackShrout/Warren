@@ -405,7 +405,7 @@ namespace warren::boot {
             return boot_information_producer_error_t::null_work_storage;
 
         uint32_t memory_entry_count{ 0 };
-        
+
         const boot_information_producer_error_t map_result{
             build_normalized_map(input, resources, work_entries, work_entry_capacity, memory_entry_count)
         };
