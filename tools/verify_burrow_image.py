@@ -1281,6 +1281,7 @@ def verify_first_entry_disassembly(
         "msr VBAR_EL1",
         "isb",
         "stp x20, x21",
+        "bl ",
         "msr DAIFSet, #0xf",
         "wfe",
     ):
@@ -1291,6 +1292,15 @@ def verify_first_entry_disassembly(
                 f"Burrow first entry is missing ordered instruction {fragment}"
             )
         cursor += 1
+
+    preparation_branches = [
+        instruction for instruction in instructions
+        if instruction.startswith("bl ") and "burrow_aarch64_prepare_transition" in instruction
+    ]
+    if len(preparation_branches) != 1:
+        raise VerificationError(
+            "Burrow first entry must call transition preparation exactly once"
+        )
 
     forbidden_registers = (
         "SPSR_EL2",
@@ -1463,6 +1473,42 @@ def verify_emergency_vectors_disassembly(
         )
 
 
+def verify_transition_preparation_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble-symbols=burrow_aarch64_prepare_transition",
+            "--demangle",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble transition preparation")
+
+    output = re.sub(r"\s+", " ", result.stdout)
+    for fragment in (
+        "burrow::core::consume_boot_information",
+        "burrow::core::plan_aarch64_transition",
+    ):
+        if fragment not in output:
+            raise VerificationError(
+                f"transition preparation is missing {fragment}"
+            )
+    for value, name in (("4a", "validation"), ("4d", "planning")):
+        if re.search(rf"\bmov\s+w[0-9]+,\s*#0x{value}\b", result.stdout) is None:
+            raise VerificationError(
+                f"transition preparation is missing the {name} failure code"
+            )
+
+
 def verify_qemu_result_disassembly(
     objdump: pathlib.Path,
     image: pathlib.Path,
@@ -1547,7 +1593,7 @@ def verify_qemu_result_disassembly(
 
     for fragment in (
         "cmp w0, #0x41",
-        "cmp w0, #0x48",
+        "cmp w0, #0x51",
         "mov x24, #0x9000000",
         "udiv w7, w19, w6",
         "msub w8, w7, w6, w19",
@@ -1643,6 +1689,10 @@ def main() -> int:
             arguments.objdump,
             arguments.image,
             qemu_test_result=arguments.qemu_test_result,
+        )
+        verify_transition_preparation_disassembly(
+            arguments.objdump,
+            arguments.image,
         )
         verify_qemu_result_disassembly(
             arguments.objdump,

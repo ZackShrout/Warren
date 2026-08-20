@@ -167,6 +167,12 @@ burrow_aarch64_entry:
     cmp x4, x22
     b.ne .Lfail_stack
 
+    mov x0, x20
+    mov w1, w19
+    mov x2, x20
+    bl burrow_aarch64_prepare_transition
+    cbnz w0, .Lreport_first_entry_failure
+
     add x6, x20, #EARLY_CONSOLE_SECTION
     ldr w7, [x6, #SECTION_OFFSET]
     cmp w7, #BOOT_HEADER_SIZE

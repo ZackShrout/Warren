@@ -446,7 +446,7 @@ add_test(
         --expected-test burrow-first-entry
         --expected-result panic
         --expected-code 4
-        --require-output "BURROW_EXCEPTION:stage=1:vector=4:el=1:esr=0x00000000F2000777:"
+        --require-output "BURROW_EXCEPTION:stage=2:vector=4:el=1:esr=0x00000000F2000777:"
 )
 set_tests_properties(WarrenSystemEmergencyVectorEl1 PROPERTIES TIMEOUT 40)
 
@@ -462,7 +462,7 @@ add_test(
         --expected-test burrow-first-entry
         --expected-result panic
         --expected-code 4
-        --require-output "BURROW_EXCEPTION:stage=1:vector=4:el=2:esr=0x00000000F2000777:"
+        --require-output "BURROW_EXCEPTION:stage=2:vector=4:el=2:esr=0x00000000F2000777:"
 )
 set_tests_properties(WarrenSystemEmergencyVectorEl2 PROPERTIES TIMEOUT 40)
 
@@ -524,7 +524,7 @@ add_test(
         --required-el-evidence loader
         --expected-test burrow-first-entry
         --expected-result fail
-        --expected-code 72
+        --expected-code 74
         --require-output "WARREN_POST_EXIT:ExitBootServices:EL1"
         --forbid-output "BURROW_FIRST_ENTRY:"
 )

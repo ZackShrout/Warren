@@ -120,15 +120,16 @@ terminal markers, argument blocks, and fault injection. The system build also
 composes dedicated failure, panic, and emergency-vector ESP fixtures.
 `WarrenSystemEmergencyVectorEl1` and `WarrenSystemEmergencyVectorEl2` inject the
 same `BRK #0x777` after the validated console record and require vector class 4,
-ESR `0xF2000777`, the requested current EL, and agreed `PANIC`/4.
+stage 2, ESR `0xF2000777`, the requested current EL, and agreed `PANIC`/4.
 `WarrenSystemQemuResultFailure` requires an agreed `FAIL`/64 result, while
 `WarrenSystemQemuResultPanic` requires an agreed
 `PANIC`/2 result through the same QEMU harness used by the successful boot.
 `WarrenSystemBurrowRejectsInvalidHeader` corrupts the finalized magic after
 firmware exit and requires `FAIL`/68 with no Burrow success diagnostic.
 `WarrenSystemBurrowRejectsInvalidConsole` clears the finalized console output
-flag and requires `FAIL`/72, proving that the QEMU failure reporter does not
-trust the rejected record.
+flag and requires complete-consumer `FAIL`/74, proving both that Burrow reruns
+the shared validator and that the QEMU failure reporter does not trust the
+rejected record.
 `WarrenSystemPostExitFailureContainment` enters the loader's nonreturning
 post-exit failure routine and requires its direct diagnostic plus `FAIL`/73,
 again without entering Burrow.

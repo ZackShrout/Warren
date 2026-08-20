@@ -81,9 +81,12 @@ add_custom_target(WarrenPlanning SOURCES
     docs/specifications/TEST_RESULT_PROTOCOL_V1.md
     boot/Platform/QemuVirt/PostExitTestResult.s
     kernel/linker/AArch64/burrow.ld
+    kernel/include/burrow/Core/TransitionPlan.h
     kernel/src/Arch/AArch64/EmergencyVectors.S
     kernel/src/Arch/AArch64/Entry.S
+    kernel/src/Arch/AArch64/TransitionPreparation.cpp
     kernel/src/Core/ImageLayout.cpp
+    kernel/src/Core/TransitionPlan.cpp
     kernel/src/Platform/QemuVirt/TestResult.S
     third_party/README.md
     third_party/edk2/LICENSE
@@ -104,6 +107,7 @@ add_custom_target(WarrenPlanning SOURCES
     tools/warren_test_protocol.py
     tests/host/BurrowImageVerifierTests.py
     tests/host/EspBuilderTests.py
+    tests/host/TransitionPlanTests.cpp
     tests/host/WarrenTestProtocolTests.py
     tests/host/UefiSmokeHarnessTests.py
 )
@@ -204,6 +208,47 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenBootInformationProtocol
         COMMAND WarrenBootInformationTests
+    )
+
+    add_library(WarrenTransitionPlan OBJECT
+        kernel/include/burrow/Core/TransitionPlan.h
+        kernel/src/Core/TransitionPlan.cpp
+    )
+    target_include_directories(WarrenTransitionPlan PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
+    )
+    target_compile_options(WarrenTransitionPlan PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_executable(WarrenTransitionPlanTests
+        tests/host/TransitionPlanTests.cpp
+    )
+    target_link_libraries(WarrenTransitionPlanTests PRIVATE
+        WarrenTransitionPlan
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenTransitionPlanTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenTransitionPlan
+        COMMAND WarrenTransitionPlanTests
     )
 
     add_executable(WarrenBootInformationProducerTests
@@ -412,7 +457,14 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     add_library(BurrowImageObjects OBJECT
         kernel/src/Arch/AArch64/EmergencyVectors.S
         kernel/src/Arch/AArch64/Entry.S
+        kernel/src/Arch/AArch64/TransitionPreparation.cpp
         kernel/src/Core/ImageLayout.cpp
+        kernel/src/Core/TransitionPlan.cpp
+        sdk/src/boot/BootInformationValidation.cpp
+    )
+    target_include_directories(BurrowImageObjects PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
     )
     if(WARREN_ENABLE_QEMU_TEST_RESULT)
         target_sources(BurrowImageObjects PRIVATE
@@ -449,9 +501,10 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
         $<$<COMPILE_LANGUAGE:CXX>:-fno-threadsafe-statics>
         $<$<COMPILE_LANGUAGE:CXX>:-fno-use-cxa-atexit>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-builtin>
+        $<$<COMPILE_LANGUAGE:CXX>:-mgeneral-regs-only>
         $<$<COMPILE_LANGUAGE:CXX>:-fno-unwind-tables>
         $<$<COMPILE_LANGUAGE:CXX>:-fno-asynchronous-unwind-tables>
-        $<$<COMPILE_LANGUAGE:CXX>:-nostdinc>
         $<$<COMPILE_LANGUAGE:CXX>:-nostdinc++>
         $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-O0>
         $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-gdwarf-5>

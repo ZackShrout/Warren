@@ -233,16 +233,16 @@ The `burrow-first-entry` test owns these test-specific failure codes:
 | `72` | Early-console record |
 | `73` | Loader post-exit failure containment fixture |
 
-Codes 65–72 are emitted only by QEMU platform test support after the assembly
-witness selects a failure class. The reporter uses the reference machine's
-fixed PL011 independently of the rejected object; ordinary Burrow images retain
-the same classifications but enter their masked wait because they contain no
-test transport.
+The bounded dynamic reporter accepts codes 65–81. The assembly witness currently
+selects 65–72, while complete-consumer and transition-planning failures select
+74 and 77. The reporter uses the reference machine's fixed PL011 independently
+of the rejected object; ordinary Burrow images retain the same classifications
+but enter their masked wait because they contain no test transport.
 
 The emergency-vector fixtures retain the `burrow-first-entry` identifier while
 the normalized-entry feature is in progress. After the validated console record
 is published, a test-only `BRK #0x777` must enter current-EL vector class 4. The
-production reporter emits stage 1, vector 4, the requested EL, ESR
+production reporter emits stage 2, vector 4, the requested EL, ESR
 `0xF2000777`, ELR, FAR, and SPSR before the isolated transport emits
 `PANIC:burrow-first-entry:4`. EL1 and EL2 use separate QEMU processes. Focused
 artifacts contain neither the injected `BRK`, the exception terminal marker,
@@ -286,8 +286,9 @@ pass, fail, and panic images. The transport fixtures select `PASS`/0, `FAIL`/64,
 or `PANIC`/2 at build time. A separate UEFI fixture corrupts the finalized magic
 after successful `ExitBootServices()` and requires Burrow to reject it with
 `FAIL`/68 without emitting its first-entry success diagnostic. A second clears
-the finalized console output flag and requires `FAIL`/72 through the independent
-QEMU reporter. Another enters the loader's real post-exit containment path and
+the finalized console output flag and requires complete-consumer `FAIL`/74
+through the independent QEMU reporter. Another enters the loader's real
+post-exit containment path and
 requires its direct PL011 diagnostic plus `FAIL`/73 without entering Burrow.
 Each is packaged into its own
 ESP and accepted only when the common host harness observes the expected

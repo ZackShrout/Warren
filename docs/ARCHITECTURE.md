@@ -1,6 +1,6 @@
 # Warren Architecture
 
-**Status:** Phase 0 contracts accepted; Phase 1 first entry implemented
+**Status:** Phase 0 contracts accepted; Phase 1 transition planning implemented
 
 **Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
 
@@ -9,8 +9,10 @@
 This document describes the direction in which Warren begins. The UEFI
 bootloader now loads and enters the audited Burrow ELF image through the
 accepted physical handoff. Burrow's assembly witness now installs a terminal
-emergency vector table at inherited EL1 or EL2, but still stops before execution
-normalization or architecture-neutral kernel entry. Stable decisions are
+emergency vector table at inherited EL1 or EL2. Its first freestanding C++
+boundary performs complete boot-information validation and immutable transition
+planning, but Burrow still stops before execution normalization or
+architecture-neutral kernel entry. Stable decisions are
 recorded in `docs/adr/`, and exact subordinate formats live in
 `docs/specifications/`.
 

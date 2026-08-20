@@ -1,8 +1,8 @@
 # Warren AArch64 Normalized Entry
 
 **Status:** Branch implementation contract under ADR-0002, ADR-0007,
-ADR-0011, and ADR-0016; emergency-vector stage implemented, later stages
-incomplete
+ADR-0011, and ADR-0016; complete-consumer and transition-planning stages
+implemented, later stages incomplete
 
 **Target:** ARMv8.0-A, non-secure AArch64 EL1 or EL2, 4 KiB pages
 
