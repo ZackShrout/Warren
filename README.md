@@ -13,8 +13,11 @@ with Warren-owned production C++, allocates firmware-selected pages, copies and
 zero-fills the load image, constructs and validates boot information from the
 final UEFI memory map, exits boot services, and transfers through the reviewed
 AArch64 boundary. Pinned QEMU boots prove Burrow's assembly witness executes at
-EL1 and accepts the observable handoff contract. The current proof deliberately
-stops before exception vectors, EL normalization, owned mappings, or
+both inherited EL1 and EL2, accepts the observable handoff contract, and
+installs a terminal emergency vector table at the active EL. Deliberate
+synchronous exceptions at both levels report their architectural state and
+terminate through `PANIC`/4. The current proof deliberately stops before EL
+normalization, owned mappings, stable higher-half vectors, or
 architecture-neutral kernel C++ entry.
 
 ## Project Vocabulary

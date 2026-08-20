@@ -35,6 +35,8 @@ set(_warren_host_build "${_warren_product_root}/host")
 set(_warren_burrow_build "${_warren_product_root}/burrow")
 set(_warren_burrow_fail_build "${_warren_product_root}/burrow-fail")
 set(_warren_burrow_panic_build "${_warren_product_root}/burrow-panic")
+set(_warren_burrow_emergency_fault_build
+    "${_warren_product_root}/burrow-emergency-fault")
 set(_warren_uefi_build "${_warren_product_root}/uefi")
 set(_warren_uefi_first_entry_fault_build "${_warren_product_root}/uefi-first-entry-fault")
 set(_warren_uefi_console_fault_build "${_warren_product_root}/uefi-console-fault")
@@ -45,6 +47,8 @@ set(_warren_burrow_symbols "${_warren_burrow_build}/artifacts/burrow.elf")
 set(_warren_burrow_map "${_warren_burrow_build}/artifacts/burrow.map")
 set(_warren_burrow_fail_image "${_warren_burrow_fail_build}/artifacts/burrow-runtime.elf")
 set(_warren_burrow_panic_image "${_warren_burrow_panic_build}/artifacts/burrow-runtime.elf")
+set(_warren_burrow_emergency_fault_image
+    "${_warren_burrow_emergency_fault_build}/artifacts/burrow-runtime.elf")
 set(_warren_bootloader "${_warren_uefi_build}/artifacts/BOOTAA64.EFI")
 set(_warren_first_entry_fault_bootloader
     "${_warren_uefi_first_entry_fault_build}/artifacts/BOOTAA64.EFI")
@@ -56,6 +60,8 @@ set(_warren_loader_test "${_warren_host_build}/WarrenBurrowLoaderTests")
 set(_warren_esp "${_warren_artifact_directory}/warren-system-esp.img")
 set(_warren_fail_esp "${_warren_artifact_directory}/warren-system-fail-esp.img")
 set(_warren_panic_esp "${_warren_artifact_directory}/warren-system-panic-esp.img")
+set(_warren_emergency_fault_esp
+    "${_warren_artifact_directory}/warren-system-emergency-fault-esp.img")
 set(_warren_first_entry_fault_esp
     "${_warren_artifact_directory}/warren-system-first-entry-fault-esp.img")
 set(_warren_console_fault_esp
@@ -119,6 +125,26 @@ add_custom_target(WarrenSystemBurrowPanic
         --build "${_warren_burrow_panic_build}"
         --target BurrowImage
     BYPRODUCTS "${_warren_burrow_panic_image}"
+    USES_TERMINAL
+    VERBATIM
+)
+
+add_custom_target(WarrenSystemBurrowEmergencyFault
+    COMMAND "${CMAKE_COMMAND}"
+        -S "${CMAKE_CURRENT_SOURCE_DIR}"
+        -B "${_warren_burrow_emergency_fault_build}"
+        -G Ninja
+        -DCMAKE_MAKE_PROGRAM=${WARREN_HOST_NINJA}
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchains/AArch64Warren.cmake
+        -DWARREN_BUILD_ENVIRONMENT=burrow
+        -DWARREN_ENABLE_QEMU_TEST_RESULT=ON
+        -DWARREN_QEMU_TEST_RESULT_MODE=pass
+        -DWARREN_AARCH64_ENTRY_FAULT=emergency
+    COMMAND "${CMAKE_COMMAND}"
+        --build "${_warren_burrow_emergency_fault_build}"
+        --target BurrowImage
+    BYPRODUCTS "${_warren_burrow_emergency_fault_image}"
     USES_TERMINAL
     VERBATIM
 )
@@ -268,6 +294,25 @@ add_custom_command(
 )
 
 add_custom_command(
+    OUTPUT "${_warren_emergency_fault_esp}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${_warren_artifact_directory}"
+    COMMAND "${WARREN_HOST_PYTHON}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_esp.py"
+        --mformat "${WARREN_MFORMAT}"
+        --mcopy "${WARREN_MCOPY}"
+        --bootloader "${_warren_bootloader}"
+        --burrow "${_warren_burrow_emergency_fault_image}"
+        --output "${_warren_emergency_fault_esp}"
+    DEPENDS
+        WarrenSystemBurrowEmergencyFault
+        WarrenSystemUefi
+        "${_warren_burrow_emergency_fault_image}"
+        "${_warren_bootloader}"
+        tools/build_esp.py
+    VERBATIM
+)
+
+add_custom_command(
     OUTPUT "${_warren_first_entry_fault_esp}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${_warren_artifact_directory}"
     COMMAND "${WARREN_HOST_PYTHON}"
@@ -328,6 +373,7 @@ add_custom_target(WarrenSystemImage ALL DEPENDS
     "${_warren_esp}"
     "${_warren_fail_esp}"
     "${_warren_panic_esp}"
+    "${_warren_emergency_fault_esp}"
     "${_warren_first_entry_fault_esp}"
     "${_warren_console_fault_esp}"
     "${_warren_post_exit_fault_esp}"
@@ -387,6 +433,38 @@ add_test(
         --expected-test burrow-first-entry
 )
 set_tests_properties(WarrenSystemBurrowFirstEntryEl2 PROPERTIES TIMEOUT 40)
+
+add_test(
+    NAME WarrenSystemEmergencyVectorEl1
+    COMMAND "${WARREN_HOST_PYTHON}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_uefi_smoke.py"
+        --qemu "${WARREN_QEMU_AARCH64}"
+        --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
+        --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
+        --esp "${_warren_emergency_fault_esp}"
+        --initial-el el1
+        --expected-test burrow-first-entry
+        --expected-result panic
+        --expected-code 4
+        --require-output "BURROW_EXCEPTION:stage=1:vector=4:el=1:esr=0x00000000F2000777:"
+)
+set_tests_properties(WarrenSystemEmergencyVectorEl1 PROPERTIES TIMEOUT 40)
+
+add_test(
+    NAME WarrenSystemEmergencyVectorEl2
+    COMMAND "${WARREN_HOST_PYTHON}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_uefi_smoke.py"
+        --qemu "${WARREN_QEMU_AARCH64}"
+        --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
+        --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
+        --esp "${_warren_emergency_fault_esp}"
+        --initial-el el2
+        --expected-test burrow-first-entry
+        --expected-result panic
+        --expected-code 4
+        --require-output "BURROW_EXCEPTION:stage=1:vector=4:el=2:esr=0x00000000F2000777:"
+)
+set_tests_properties(WarrenSystemEmergencyVectorEl2 PROPERTIES TIMEOUT 40)
 
 add_test(
     NAME WarrenSystemQemuResultFailure
@@ -484,6 +562,8 @@ unset(_warren_burrow_image)
 unset(_warren_burrow_map)
 unset(_warren_burrow_panic_build)
 unset(_warren_burrow_panic_image)
+unset(_warren_burrow_emergency_fault_build)
+unset(_warren_burrow_emergency_fault_image)
 unset(_warren_burrow_symbols)
 unset(_warren_esp)
 unset(_warren_fail_esp)
@@ -492,6 +572,7 @@ unset(_warren_host_build)
 unset(_warren_loader_test)
 unset(_warren_product_root)
 unset(_warren_panic_esp)
+unset(_warren_emergency_fault_esp)
 unset(_warren_first_entry_fault_esp)
 unset(_warren_console_fault_esp)
 unset(_warren_post_exit_fault_esp)

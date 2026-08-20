@@ -36,6 +36,22 @@ burrow_qemu_test_result:
 .size burrow_qemu_test_result, . - burrow_qemu_test_result
 
 .p2align 2
+.global burrow_qemu_test_exception
+.hidden burrow_qemu_test_exception
+.type burrow_qemu_test_exception, %function
+burrow_qemu_test_exception:
+    mov x24, x0
+    adrp x25, .Lexception_marker
+    add x25, x25, :lo12:.Lexception_marker
+
+    adrp x6, burrow_qemu_exit_arguments
+    add x6, x6, :lo12:burrow_qemu_exit_arguments
+    mov x5, #4
+    str x5, [x6, #8]
+    b burrow_qemu_emit_result
+.size burrow_qemu_test_exception, . - burrow_qemu_test_exception
+
+.p2align 2
 .global burrow_qemu_test_failure
 .hidden burrow_qemu_test_failure
 .type burrow_qemu_test_failure, %function
@@ -124,6 +140,8 @@ burrow_qemu_emit_result:
 #elif defined(WARREN_QEMU_TEST_RESULT_PANIC)
     .asciz "WARREN_TEST:1:PANIC:burrow-first-entry:2\r\n"
 #endif
+.Lexception_marker:
+    .asciz "WARREN_TEST:1:PANIC:burrow-first-entry:4\r\n"
 
 .section .data.burrow.qemu_test_result, "aw", %progbits
 .p2align 3

@@ -8,7 +8,8 @@
 
 This document describes the direction in which Warren begins. The UEFI
 bootloader now loads and enters the audited Burrow ELF image through the
-accepted physical handoff. Burrow's assembly witness stops before execution
+accepted physical handoff. Burrow's assembly witness now installs a terminal
+emergency vector table at inherited EL1 or EL2, but still stops before execution
 normalization or architecture-neutral kernel entry. Stable decisions are
 recorded in `docs/adr/`, and exact subordinate formats live in
 `docs/specifications/`.
@@ -130,10 +131,12 @@ physical extent, load bias, and relocated entry. The loader then allocates the
 bootstrap stack and handoff storage, normalizes the final UEFI memory map,
 constructs and validates boot information, exits boot services with bounded
 stale-key retry, synchronizes executable bytes, and transfers with the accepted
-AArch64 register and stack state. Burrow's first-entry assembly checks the fixed
-header prefix and PL011 record, records the observed EL and handoff state, and
-stops without installing vectors, changing translation state, or calling
-architecture-neutral C++.
+AArch64 register and stack state. Burrow's first-entry assembly installs the
+matching inherited-EL emergency vectors before variable-size parsing, checks
+the fixed header prefix and PL011 record, records the observed EL and handoff
+state, and stops without changing translation state or calling
+architecture-neutral C++. The terminal vector reporter captures EL1/EL2
+architectural state without using the stack; it is not an exception dispatcher.
 
 ## Source Layout
 

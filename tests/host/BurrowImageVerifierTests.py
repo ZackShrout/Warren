@@ -28,6 +28,7 @@ from verify_burrow_image import (  # noqa: E402
     PROGRAM_HEADER,
     PROGRAM_TYPE_DYNAMIC,
     PROGRAM_TYPE_INTERPRETER,
+    QEMU_EXCEPTION_MARKER,
     QEMU_FAILURE_MARKER_TEMPLATE,
     QEMU_RESULT_ARGUMENTS,
     QEMU_RESULT_MARKERS,
@@ -53,14 +54,14 @@ from verify_burrow_image import (  # noqa: E402
 
 PROGRAM_OFFSET = ELF_HEADER.size
 TEXT_OFFSET = 0x1000
-DATA_OFFSET = 0x2000
 RELA_OFFSET = 0x220
-DYNAMIC_OFFSET = 0x2020
-SYMBOL_OFFSET = 0x2800
-STRING_OFFSET = 0x2900
-SECTION_NAME_OFFSET = 0x2A00
-SECTION_OFFSET = 0x3000
-FILE_SIZE = 0x4000
+DATA_OFFSET = 0x3000
+DYNAMIC_OFFSET = 0x3020
+SYMBOL_OFFSET = 0x4000
+STRING_OFFSET = 0x4200
+SECTION_NAME_OFFSET = 0x4400
+SECTION_OFFSET = 0x4800
+FILE_SIZE = 0x6000
 
 
 @dataclasses.dataclass
@@ -101,6 +102,8 @@ def build_fixture(*, dynamic: bool = True) -> Fixture:
     strings, string_offsets = string_table(
         (
             "burrow_aarch64_entry",
+            "burrow_aarch64_emergency_vectors",
+            "burrow_aarch64_emergency_exception",
             "__cxa_atexit",
             "replacement_entry",
         )
@@ -201,8 +204,8 @@ def build_fixture(*, dynamic: bool = True) -> Fixture:
         TEXT_OFFSET,
         TEXT_OFFSET,
         TEXT_OFFSET,
-        0x10,
-        0x10,
+        0x1100,
+        0x1100,
         0x1000,
     )
     PROGRAM_HEADER.pack_into(
@@ -235,6 +238,17 @@ def build_fixture(*, dynamic: bool = True) -> Fixture:
     image[TEXT_OFFSET : TEXT_OFFSET + 0x10] = bytes.fromhex(
         "00000014000000140000001400000014"
     )
+    for vector_number in range(16):
+        vector_address = 0x1800 + vector_number * 128
+        branch_address = vector_address + 4
+        branch_immediate = (0x2000 - branch_address) // 4
+        struct.pack_into(
+            "<II",
+            image,
+            vector_address,
+            0xD2800011 | (vector_number << 5),
+            0x14000000 | (branch_immediate & 0x03FFFFFF),
+        )
     image[DATA_OFFSET : DATA_OFFSET + 0x10] = b"BURROW-WRITABLE"
 
     if dynamic:
@@ -260,6 +274,26 @@ def build_fixture(*, dynamic: bool = True) -> Fixture:
         TEXT_OFFSET,
         4,
     )
+    SYMBOL.pack_into(
+        image,
+        SYMBOL_OFFSET + SYMBOL.size * 2,
+        string_offsets["burrow_aarch64_emergency_vectors"],
+        0x12,
+        0,
+        section_indices[".text"],
+        0x1800,
+        0x800,
+    )
+    SYMBOL.pack_into(
+        image,
+        SYMBOL_OFFSET + SYMBOL.size * 3,
+        string_offsets["burrow_aarch64_emergency_exception"],
+        0x12,
+        0,
+        section_indices[".text"],
+        0x2000,
+        4,
+    )
     image[STRING_OFFSET : STRING_OFFSET + len(strings)] = strings
     image[SECTION_NAME_OFFSET : SECTION_NAME_OFFSET + len(section_names)] = section_names
 
@@ -271,7 +305,7 @@ def build_fixture(*, dynamic: bool = True) -> Fixture:
             SECTION_FLAG_ALLOCATE | SECTION_FLAG_EXECUTE,
             TEXT_OFFSET,
             TEXT_OFFSET,
-            0x10,
+            0x1100,
             0,
             0,
             4,
@@ -319,7 +353,7 @@ def build_fixture(*, dynamic: bool = True) -> Fixture:
             0,
             0,
             SYMBOL_OFFSET,
-            SYMBOL.size * 2,
+            SYMBOL.size * 4,
             section_indices[".strtab"],
             1,
             8,
@@ -417,6 +451,9 @@ class BurrowImageFixtureTests(unittest.TestCase):
                 fixture.image[
                     0x170 : 0x170 + len(QEMU_FAILURE_MARKER_TEMPLATE)
                 ] = QEMU_FAILURE_MARKER_TEMPLATE
+                fixture.image[
+                    0x1D0 : 0x1D0 + len(QEMU_EXCEPTION_MARKER)
+                ] = QEMU_EXCEPTION_MARKER
                 fixture.image[0x1B0 : 0x1B0 + len(arguments)] = arguments
                 verify_image(bytes(fixture.image), qemu_test_result=mode)
 
@@ -427,6 +464,7 @@ class BurrowImageFixtureTests(unittest.TestCase):
                 QEMU_FAILURE_MARKER_TEMPLATE,
                 "QEMU first-entry failure marker template must be absent",
             ),
+            (QEMU_EXCEPTION_MARKER, "QEMU exception marker must be absent"),
         ]
         for mode in QEMU_RESULT_MARKERS:
             payloads.extend((
@@ -448,6 +486,9 @@ class BurrowImageFixtureTests(unittest.TestCase):
         fixture.image[
             0x170 : 0x170 + len(QEMU_FAILURE_MARKER_TEMPLATE)
         ] = QEMU_FAILURE_MARKER_TEMPLATE
+        fixture.image[
+            0x1D0 : 0x1D0 + len(QEMU_EXCEPTION_MARKER)
+        ] = QEMU_EXCEPTION_MARKER
         with self.assertRaisesRegex(VerificationError, "QEMU pass marker must be exactly once"):
             verify_image(bytes(fixture.image), qemu_test_result="pass")
 
@@ -456,6 +497,50 @@ class BurrowImageFixtureTests(unittest.TestCase):
         struct.pack_into("<B", fixture.image, SYMBOL_OFFSET + SYMBOL.size + 4, 0x02)
         struct.pack_into("<B", fixture.image, SYMBOL_OFFSET + SYMBOL.size + 5, 2)
         verify_image(bytes(fixture.image))
+
+    def test_rejects_invalid_emergency_vector_symbol_contract(self) -> None:
+        vector_symbol = SYMBOL_OFFSET + SYMBOL.size * 2
+        mutations = (
+            (0, "<I", "replacement_entry", "must define burrow_aarch64_emergency_vectors"),
+            (4, "<B", 0x11, "emergency vectors are not a function symbol"),
+            (8, "<Q", 0x1804, "emergency vectors are not 2 KiB-aligned"),
+            (16, "<Q", 0x7FF, "emergency vector table is not exactly 2 KiB"),
+        )
+        for offset, encoding, value, message in mutations:
+            with self.subTest(message=message):
+                fixture = build_fixture()
+                if isinstance(value, str):
+                    value = fixture.strings[value]
+                struct.pack_into(encoding, fixture.image, vector_symbol + offset, value)
+                self.assert_rejected(fixture, message)
+
+    def test_rejects_invalid_emergency_vector_slot(self) -> None:
+        mutations = (
+            (0x1800, "<I", 0, "vector 0 has an invalid classifier"),
+            (0x1804, "<I", 0, "vector 0 has an invalid branch"),
+            (0x1808, "<B", 1, "vector 0 has nonzero slot padding"),
+            (0x1F80, "<I", 0, "vector 15 has an invalid classifier"),
+        )
+        for offset, encoding, value, message in mutations:
+            with self.subTest(message=message):
+                fixture = build_fixture()
+                struct.pack_into(encoding, fixture.image, offset, value)
+                self.assert_rejected(fixture, message)
+
+    def test_rejects_invalid_emergency_reporter_contract(self) -> None:
+        reporter_symbol = SYMBOL_OFFSET + SYMBOL.size * 3
+        mutations = (
+            (0, "<I", "replacement_entry", "must define burrow_aarch64_emergency_exception"),
+            (4, "<B", 0x11, "emergency reporter is not a function symbol"),
+            (16, "<Q", 0, "emergency reporter has zero size"),
+        )
+        for offset, encoding, value, message in mutations:
+            with self.subTest(message=message):
+                fixture = build_fixture()
+                if isinstance(value, str):
+                    value = fixture.strings[value]
+                struct.pack_into(encoding, fixture.image, reporter_symbol + offset, value)
+                self.assert_rejected(fixture, message)
 
     def test_accepts_runtime_copy_with_non_loaded_differences(self) -> None:
         symbol_fixture = build_fixture()
@@ -740,7 +825,7 @@ class BurrowImageFixtureTests(unittest.TestCase):
 
     def test_rejects_relocation_addend_outside_loaded_storage(self) -> None:
         fixture = build_fixture()
-        struct.pack_into("<q", fixture.image, RELA_OFFSET + 16, 0x3000)
+        struct.pack_into("<q", fixture.image, RELA_OFFSET + 16, 0x4000)
         self.assert_rejected(fixture, "addend does not name loaded")
 
 

@@ -239,6 +239,15 @@ fixed PL011 independently of the rejected object; ordinary Burrow images retain
 the same classifications but enter their masked wait because they contain no
 test transport.
 
+The emergency-vector fixtures retain the `burrow-first-entry` identifier while
+the normalized-entry feature is in progress. After the validated console record
+is published, a test-only `BRK #0x777` must enter current-EL vector class 4. The
+production reporter emits stage 1, vector 4, the requested EL, ESR
+`0xF2000777`, ELR, FAR, and SPSR before the isolated transport emits
+`PANIC:burrow-first-entry:4`. EL1 and EL2 use separate QEMU processes. Focused
+artifacts contain neither the injected `BRK`, the exception terminal marker,
+nor the semihosting transport.
+
 The in-progress `aarch64-normalized-entry` test reserves the remaining adjacent
 failure classes before its result transport replaces the first-entry marker:
 

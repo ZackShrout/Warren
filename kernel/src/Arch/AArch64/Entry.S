@@ -4,7 +4,7 @@
 //
 
 // Burrow's first AArch64 instruction boundary. This code deliberately uses no
-// stack, imports, relocatable pointers, exception vectors, or C++ runtime.
+// stack, imports, relocatable pointers, firmware services, or C++ runtime.
 
 .equ BOOT_MAGIC,                  0x49424e4552524157
 .equ BOOT_MAJOR,                  1
@@ -66,6 +66,24 @@ burrow_aarch64_entry:
     mov x22, sp
     mrs x21, CurrentEL
     mrs x23, DAIF
+
+    adrp x4, burrow_aarch64_emergency_vectors
+    add x4, x4, :lo12:burrow_aarch64_emergency_vectors
+    cmp x21, #4
+    b.eq .Linstall_el1_vectors
+    cmp x21, #8
+    b.ne .Lfail_exception_level
+    msr VBAR_EL2, x4
+    b .Lemergency_vectors_installed
+.Linstall_el1_vectors:
+    msr VBAR_EL1, x4
+.Lemergency_vectors_installed:
+    isb
+
+    adrp x4, burrow_aarch64_transition_stage
+    add x4, x4, :lo12:burrow_aarch64_transition_stage
+    mov x5, #1
+    str x5, [x4]
 
     adrp x4, burrow_first_entry_boot_information
     add x4, x4, :lo12:burrow_first_entry_boot_information
@@ -198,6 +216,15 @@ burrow_aarch64_entry:
     orr x4, x4, x6
     cbnz x4, .Lfail_console_record
 
+    adrp x4, burrow_aarch64_emergency_console_physical
+    add x4, x4, :lo12:burrow_aarch64_emergency_console_physical
+    str x24, [x4]
+    dmb ish
+    adrp x4, burrow_aarch64_emergency_console_ready
+    add x4, x4, :lo12:burrow_aarch64_emergency_console_ready
+    mov x5, #1
+    str x5, [x4]
+
     adrp x25, .Ldiagnostic_prefix
     add x25, x25, :lo12:.Ldiagnostic_prefix
     bl .Lwrite_string
@@ -225,6 +252,10 @@ burrow_aarch64_entry:
     bl .Lwrite_character
     mov w4, #'\n'
     bl .Lwrite_character
+
+#if defined(WARREN_AARCH64_FAULT_INJECT_EMERGENCY)
+    brk #0x777
+#endif
 
 #if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
     mov x0, x24

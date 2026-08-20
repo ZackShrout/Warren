@@ -116,9 +116,13 @@ the boot-information ABI, the serial classifier, and toolchain gates.
 The combined system build explicitly enables the test-only QEMU transport in
 its Burrow child. Focused `aarch64-debug` and `aarch64-release` products leave
 that option off, and their artifact verification rejects the semihosting trap,
-terminal markers, and argument blocks. The system build also composes dedicated
-failure and panic ESP fixtures. `WarrenSystemQemuResultFailure` requires an
-agreed `FAIL`/64 result, while `WarrenSystemQemuResultPanic` requires an agreed
+terminal markers, argument blocks, and fault injection. The system build also
+composes dedicated failure, panic, and emergency-vector ESP fixtures.
+`WarrenSystemEmergencyVectorEl1` and `WarrenSystemEmergencyVectorEl2` inject the
+same `BRK #0x777` after the validated console record and require vector class 4,
+ESR `0xF2000777`, the requested current EL, and agreed `PANIC`/4.
+`WarrenSystemQemuResultFailure` requires an agreed `FAIL`/64 result, while
+`WarrenSystemQemuResultPanic` requires an agreed
 `PANIC`/2 result through the same QEMU harness used by the successful boot.
 `WarrenSystemBurrowRejectsInvalidHeader` corrupts the finalized magic after
 firmware exit and requires `FAIL`/68 with no Burrow success diagnostic.

@@ -81,7 +81,8 @@ add_custom_target(WarrenPlanning SOURCES
     docs/specifications/TEST_RESULT_PROTOCOL_V1.md
     boot/Platform/QemuVirt/PostExitTestResult.s
     kernel/linker/AArch64/burrow.ld
-    kernel/src/Arch/AArch64/Entry.s
+    kernel/src/Arch/AArch64/EmergencyVectors.S
+    kernel/src/Arch/AArch64/Entry.S
     kernel/src/Core/ImageLayout.cpp
     kernel/src/Platform/QemuVirt/TestResult.S
     third_party/README.md
@@ -383,6 +384,12 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     set_property(CACHE WARREN_QEMU_TEST_RESULT_MODE PROPERTY STRINGS
         pass fail panic
     )
+    set(WARREN_AARCH64_ENTRY_FAULT "none" CACHE STRING
+        "Trusted QEMU-only AArch64 entry fault fixture"
+    )
+    set_property(CACHE WARREN_AARCH64_ENTRY_FAULT PROPERTY STRINGS
+        none emergency
+    )
 
     if(WARREN_ENABLE_QEMU_TEST_RESULT AND
        NOT WARREN_QEMU_TEST_RESULT_MODE MATCHES "^(pass|fail|panic)$")
@@ -390,9 +397,21 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             "WARREN_QEMU_TEST_RESULT_MODE must be pass, fail, or panic"
         )
     endif()
+    if(NOT WARREN_AARCH64_ENTRY_FAULT MATCHES "^(none|emergency)$")
+        message(FATAL_ERROR
+            "WARREN_AARCH64_ENTRY_FAULT must be none or emergency"
+        )
+    endif()
+    if(NOT WARREN_AARCH64_ENTRY_FAULT STREQUAL "none" AND
+       NOT WARREN_ENABLE_QEMU_TEST_RESULT)
+        message(FATAL_ERROR
+            "AArch64 entry fault injection requires QEMU test-result support"
+        )
+    endif()
 
     add_library(BurrowImageObjects OBJECT
-        kernel/src/Arch/AArch64/Entry.s
+        kernel/src/Arch/AArch64/EmergencyVectors.S
+        kernel/src/Arch/AArch64/Entry.S
         kernel/src/Core/ImageLayout.cpp
     )
     if(WARREN_ENABLE_QEMU_TEST_RESULT)
@@ -407,9 +426,13 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         set(_burrow_result_mode_upper "PASS")
         set(_burrow_verifier_result_arguments)
     endif()
-    set_source_files_properties(kernel/src/Arch/AArch64/Entry.s PROPERTIES
-        COMPILE_OPTIONS "-x;assembler-with-cpp"
-    )
+    if(WARREN_AARCH64_ENTRY_FAULT STREQUAL "emergency")
+        set(_burrow_verifier_fault_arguments
+            --aarch64-entry-fault emergency
+        )
+    else()
+        set(_burrow_verifier_fault_arguments)
+    endif()
     target_compile_options(BurrowImageObjects PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:-ffreestanding>
         $<$<COMPILE_LANGUAGE:CXX>:-fpie>
@@ -441,6 +464,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:NDEBUG>
         $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>>:WARREN_ENABLE_QEMU_TEST_RESULT=1>
         $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>>:WARREN_QEMU_TEST_RESULT_${_burrow_result_mode_upper}=1>
+        $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<STREQUAL:${WARREN_AARCH64_ENTRY_FAULT},emergency>>:WARREN_AARCH64_FAULT_INJECT_EMERGENCY=1>
     )
 
     set(_burrow_artifact_directory "${CMAKE_CURRENT_BINARY_DIR}/artifacts")
@@ -481,6 +505,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
             --objdump "${CMAKE_OBJDUMP}"
             ${_burrow_verifier_result_arguments}
+            ${_burrow_verifier_fault_arguments}
             --image "${_burrow_symbol_image}"
         COMMAND "${CMAKE_OBJCOPY}"
             --strip-debug
@@ -490,6 +515,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
             --objdump "${CMAKE_OBJDUMP}"
             ${_burrow_verifier_result_arguments}
+            ${_burrow_verifier_fault_arguments}
             --runtime
             --image "${_burrow_runtime_image}"
             --reference-image "${_burrow_symbol_image}"
@@ -525,6 +551,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     unset(_burrow_runtime_image)
     unset(_burrow_map)
     unset(_burrow_result_mode_upper)
+    unset(_burrow_verifier_fault_arguments)
     unset(_burrow_verifier_result_arguments)
 endif()
 

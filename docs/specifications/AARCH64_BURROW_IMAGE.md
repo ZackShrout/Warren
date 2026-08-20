@@ -44,10 +44,12 @@ runtime library, or unresolved target symbol.
 The entry is the C-compatible architecture symbol
 `burrow_aarch64_entry`. LLD localizes its hidden definition in the final symbol
 table; it remains a nonempty `STT_FUNC` at ELF entry address `0x1000`. Its
-AArch64 assembly body records the incoming handoff state, checks the fixed
-boot-information prefix, stack/register state, DAIF masks, current EL, and
-bounded PL011 descriptor, and then enters a masked wait. It imports no runtime
-and does not call architecture-neutral C++.
+AArch64 assembly body records the incoming handoff state, installs the matching
+2 KiB emergency vector table, checks the fixed boot-information prefix,
+stack/register state, DAIF masks, current EL, and bounded PL011 descriptor, and
+then enters a masked wait. The terminal reporter captures either EL1 or EL2
+architectural exception state without using the stack. It imports no runtime
+and does not yet normalize EL2 or call architecture-neutral C++.
 
 ## 3. Load Image
 
@@ -75,11 +77,11 @@ The current ordinary debug and release images share this loaded shape:
 
 | Header | Offset | Virtual address | File size | Memory size | Flags |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `PT_LOAD` | `0x0000` | `0x0000` | `0x01FF` | `0x01FF` | R |
-| `PT_LOAD` | `0x1000` | `0x1000` | `0x02F0` | `0x02F0` | RX |
-| `PT_LOAD` | `0x2000` | `0x2000` | `0x0088` | `0x00D0` | RW |
-| `PT_DYNAMIC` | `0x2028` | `0x2028` | `0x0060` | `0x0060` | RW |
-| `PT_GNU_RELRO` | `0x2028` | `0x2028` | `0x0060` | `0x0060` | R |
+| `PT_LOAD` | `0x0000` | `0x0000` | `0x0247` | `0x0247` | R |
+| `PT_LOAD` | `0x1000` | `0x1000` | `0x11AC` | `0x11AC` | RX |
+| `PT_LOAD` | `0x3000` | `0x3000` | `0x00D8` | `0x0120` | RW |
+| `PT_DYNAMIC` | `0x3078` | `0x3078` | `0x0060` | `0x0060` | RW |
+| `PT_GNU_RELRO` | `0x3078` | `0x3078` | `0x0060` | `0x0060` | R |
 | `PT_GNU_STACK` | `0x0000` | `0x0000` | `0` | `0` | RW, non-executable |
 
 The exact current sizes are evidence for the minimal image, not reserved ABI
@@ -97,9 +99,9 @@ The runtime copy currently retains these sections:
 | `.dynstr` | `SHT_STRTAB` | R | `0x01C4` |
 | `.rodata` | `SHT_PROGBITS`, A | R | `0x01D0` |
 | `.text` | `SHT_PROGBITS`, AX | RX | `0x1000` |
-| `.data` | `SHT_PROGBITS`, WA | RW | `0x2000` |
-| `.dynamic` | `SHT_DYNAMIC`, WA | RW | `0x2028` |
-| `.bss` | `SHT_NOBITS`, WA | RW | `0x2090` |
+| `.data` | `SHT_PROGBITS`, WA | RW | `0x3000` |
+| `.dynamic` | `SHT_DYNAMIC`, WA | RW | `0x3078` |
+| `.bss` | `SHT_NOBITS`, WA | RW | `0x30E0` |
 | `.symtab`, `.strtab`, `.shstrtab` | Symbol/strings | Not loaded | no runtime address |
 
 Allocated sections are wholly contained by a compatible load class. A
@@ -289,9 +291,10 @@ same ESP through UEFI.
 
 The combined QEMU path emits `BEGIN:burrow-first-entry`, the live loaded-image
 diagnostic, a direct post-`ExitBootServices()` loader line, Burrow's observed EL
-and boot-information address, and `PASS:burrow-first-entry`. Burrow then uses
-the exact test-only `SYS_EXIT_EXTENDED` operation with status zero. The host
-requires serial/process agreement.
+and boot-information address, and `PASS:burrow-first-entry`. Explicit
+`virtualization=off` and `virtualization=on` routes prove inherited EL1 and EL2.
+Burrow then uses the exact test-only `SYS_EXIT_EXTENDED` operation with status
+zero. The host requires serial/process agreement.
 
 `WARREN_ENABLE_QEMU_TEST_RESULT` defaults off and is enabled only by combined
 system-test orchestration. Its private `WARREN_QEMU_TEST_RESULT_MODE` selection
@@ -299,13 +302,14 @@ is one of `pass`, `fail`, or `panic`; each mode chooses one exact terminal line
 and matching status block. The transport object lives under
 `kernel/src/Platform/QemuVirt` and is not compiled into ordinary Burrow.
 The same test object owns a bounded dynamic failure entry for witness codes
-65–72. That entry accepts only the allocated range, uses the QEMU-virt PL011
-base rather than trusting a rejected console record, emits the matching decimal
-code, and updates the shared semihosting argument block before the one common
-trap.
+65–72 and a dedicated architectural-exception entry for common `PANIC` code 4.
+The failure entry accepts only the allocated range and uses the QEMU-virt PL011
+base rather than trusting a rejected console record. The exception entry is
+reached only after the production reporter emits its architectural record. Both
+update the shared semihosting argument block before the one common trap.
 
 Focused debug and release artifacts must contain no semihosting HLT, terminal
-test marker, exit argument block, or branch from first entry into the transport.
+test marker, exit argument block, injected `BRK`, or branch into the transport.
 The byte-level and disassembly artifact verifier enforces absence in ordinary
 products and the exact selected shape in every system-test child.
 The system matrix also packages a UEFI fault image that corrupts the finalized
@@ -314,3 +318,6 @@ requires `FAIL`/68 and forbids the normal Burrow first-entry diagnostic, proving
 that consumer validation is independent of the loader's earlier validation. A
 second image clears the finalized console output flag and requires `FAIL`/72,
 proving that the fixed QEMU reporter does not use the rejected record.
+A dedicated emergency-vector child injects `BRK #0x777` only after the
+validated PL011 record is published. Both inherited EL1 and EL2 boots require
+vector class 4, ESR `0xF2000777`, the matching current EL, and agreed `PANIC`/4.
