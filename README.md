@@ -18,8 +18,11 @@ installs a terminal emergency vector table at the active EL. Deliberate
 synchronous exceptions at both levels report their architectural state and
 terminate through `PANIC`/4. Burrow now also runs the complete shared
 boot-information validator and deterministically reserves its immutable
-128-page transition arena from validated `usable` memory. The current proof
-deliberately stops before EL normalization, owned mappings, stable higher-half
+128-page transition arena from validated `usable` memory. Burrow then abandons
+the inherited firmware translation and cache state: the inherited EL1 route
+stays at EL1, while the inherited EL2 route performs the reviewed one-way
+`ERET`; both reach the same physical, MMU-off EL1h state with masked DAIF. The
+current proof deliberately stops before owned mappings, stable higher-half
 vectors, or architecture-neutral kernel C++ entry.
 
 ## Project Vocabulary
@@ -112,17 +115,20 @@ process results for `burrow-first-entry`: UEFI loads Burrow, constructs and
 validates the final boot-information object, exits boot services, and transfers
 through the reviewed AArch64 boundary; Burrow then validates the directly
 observable entry state and reports the terminal result. The system-only Burrow
-children contain the QEMU result transport. Separate target fixtures prove
-matching pass, explicit-failure, and panic serial/process results; UEFI fault
-fixtures prove rejection of malformed finalized handoff data and loader-side
-post-exit containment. Focused Burrow products do not contain that transport.
+children contain the QEMU result transport. Both live profiles must also emit
+the matching `BURROW_COMMON_EL1` normalization diagnostic. Separate target
+fixtures prove matching pass, explicit-failure, and panic serial/process
+results; UEFI fault fixtures prove rejection of malformed finalized handoff
+data and loader-side post-exit containment. Focused Burrow products do not
+contain that transport.
 
 Before final map capture, loader diagnostics use the UEFI console. After a
 successful exit, the loader and first-entry witness use minimal direct PL011
-output under the inherited firmware identity mapping. That one-way output is
-not the later reusable Burrow console. Semihosting exists only in trusted QEMU
-test artifacts and is neither an ordinary shutdown path nor a physical-machine
-interface.
+output under the inherited firmware identity mapping; the common-EL1 witness
+uses the same validated physical aperture after inherited translation is off.
+That one-way output is not the later reusable Burrow console. Semihosting exists
+only in trusted QEMU test artifacts and is neither an ordinary shutdown path nor
+a physical-machine interface.
 
 The `aarch64-debug` and `uefi-aarch64-debug` presets remain available for
 focused product builds. The Burrow, UEFI, and system profiles each have a

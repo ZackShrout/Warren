@@ -213,7 +213,9 @@ The loader emits `BEGIN` before opening the packaged runtime ELF. Burrow emits
 `PASS` only after the image has been validated and materialized, the final boot
 information object has been built and validated, UEFI boot services have ended,
 the AArch64 handoff has installed the declared stack and registers, and the
-first-entry witness has checked the directly observable contract. Burrow then
+first-entry witness has checked the directly observable contract. Burrow also
+must have removed inherited firmware translation and reached the common MMU-off
+EL1h witness through the route matching the requested initial EL. Burrow then
 requests `SYS_EXIT_EXTENDED` status zero. The host accepts the test only when the
 serial terminal record and QEMU status agree. Focused non-test Burrow artifacts
 contain neither the terminal marker, semihosting argument block, nor trap.
@@ -234,10 +236,11 @@ The `burrow-first-entry` test owns these test-specific failure codes:
 | `73` | Loader post-exit failure containment fixture |
 
 The bounded dynamic reporter accepts codes 65–81. The assembly witness currently
-selects 65–72, while complete-consumer and transition-planning failures select
-74 and 77. The reporter uses the reference machine's fixed PL011 independently
-of the rejected object; ordinary Burrow images retain the same classifications
-but enter their masked wait because they contain no test transport.
+selects 65–72, while complete-consumer, common-EL1 normalization, and
+transition-planning failures select 74, 76, and 77. The reporter uses the
+reference machine's fixed PL011 independently of the rejected object; ordinary
+Burrow images retain the same classifications but enter their masked wait
+because they contain no test transport.
 
 The emergency-vector fixtures retain the `burrow-first-entry` identifier while
 the normalized-entry feature is in progress. After the validated console record

@@ -1,6 +1,7 @@
 # Warren Architecture
 
-**Status:** Phase 0 contracts accepted; Phase 1 transition planning implemented
+**Status:** Phase 0 contracts accepted; Phase 1 common-EL1 normalization
+implemented
 
 **Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
 
@@ -11,7 +12,9 @@ bootloader now loads and enters the audited Burrow ELF image through the
 accepted physical handoff. Burrow's assembly witness now installs a terminal
 emergency vector table at inherited EL1 or EL2. Its first freestanding C++
 boundary performs complete boot-information validation and immutable transition
-planning, but Burrow still stops before execution normalization or
+planning. Architecture assembly then removes inherited firmware translation
+and cache state and converges both inherited EL1 and EL2 routes at one physical,
+MMU-off EL1h label. Burrow still stops before owned translation tables or
 architecture-neutral kernel entry. Stable decisions are
 recorded in `docs/adr/`, and exact subordinate formats live in
 `docs/specifications/`.
@@ -51,7 +54,7 @@ Initial machine assumptions:
 | Concern | Initial choice |
 | --- | --- |
 | CPU architecture | AArch64 / ARMv8.0-A, Cortex-A57 reference CPU |
-| Privilege | Loader may hand off at EL1 or EL2; a later stage normalizes to EL1 |
+| Privilege | Loader may hand off at EL1 or EL2; Burrow normalizes both to EL1h |
 | CPU count | One |
 | Memory | 512 MiB reference configuration |
 | Base page size | 4 KiB |
@@ -335,10 +338,10 @@ Nothing becomes stable merely because it was committed once.
 
 ## Scheduled Architectural Decisions
 
-The Phase 0 decision queue is empty. First Light still requires the focused,
-register-level EL2/EL1 normalization sequence already governed by ADR-0011; it
-will be settled with the prototype that can prove both entry paths rather than
-guessed in Phase 0.
+The Phase 0 decision queue is empty. First Light's focused register-level
+EL2/EL1 normalization sequence is implemented under ADR-0011 and proven through
+both live firmware entry paths. Owned translation activation, higher-half
+transfer, identity removal, and the architecture-neutral C++ boundary remain.
 
 Later decisions include the syscall ABI, kernel object model, scheduler policy,
 VFS semantics, libc strategy, service model, package format, graphics stack, and

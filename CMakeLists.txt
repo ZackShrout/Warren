@@ -84,6 +84,7 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/include/burrow/Core/TransitionPlan.h
     kernel/src/Arch/AArch64/EmergencyVectors.S
     kernel/src/Arch/AArch64/Entry.S
+    kernel/src/Arch/AArch64/Normalization.S
     kernel/src/Arch/AArch64/TransitionPreparation.cpp
     kernel/src/Core/ImageLayout.cpp
     kernel/src/Core/TransitionPlan.cpp
@@ -457,6 +458,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     add_library(BurrowImageObjects OBJECT
         kernel/src/Arch/AArch64/EmergencyVectors.S
         kernel/src/Arch/AArch64/Entry.S
+        kernel/src/Arch/AArch64/Normalization.S
         kernel/src/Arch/AArch64/TransitionPreparation.cpp
         kernel/src/Core/ImageLayout.cpp
         kernel/src/Core/TransitionPlan.cpp

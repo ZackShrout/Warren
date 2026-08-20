@@ -263,10 +263,7 @@ burrow_aarch64_entry:
     brk #0x777
 #endif
 
-#if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
-    mov x0, x24
-    b burrow_qemu_test_result
-#endif
+    b burrow_aarch64_normalize
 
 .Lfail_registers:
     mov w0, #FIRST_ENTRY_FAIL_REGISTERS

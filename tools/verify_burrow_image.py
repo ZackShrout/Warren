@@ -120,6 +120,8 @@ MAXIMUM_U64 = 0xFFFFFFFFFFFFFFFF
 ENTRY_SYMBOL = "burrow_aarch64_entry"
 EMERGENCY_VECTOR_SYMBOL = "burrow_aarch64_emergency_vectors"
 EMERGENCY_REPORTER_SYMBOL = "burrow_aarch64_emergency_exception"
+NORMALIZATION_SYMBOL = "burrow_aarch64_normalize"
+COMMON_EL1_SYMBOL = "burrow_aarch64_common_el1"
 QEMU_SEMIHOST_HLT = bytes.fromhex("00005ed4")
 QEMU_PASS_MARKER = b"WARREN_TEST:1:PASS:burrow-first-entry\r\n\0"
 QEMU_FAILURE_MARKER_TEMPLATE = b"WARREN_TEST:1:FAIL:burrow-first-entry:00\r\n\0"
@@ -1349,7 +1351,7 @@ def verify_first_entry_disassembly(
         instruction for instruction in instructions
         if instruction.startswith("b ") and "burrow_qemu_test_result" in instruction
     ]
-    if len(branches_to_transport) != (1 if qemu_test_result is not None else 0):
+    if branches_to_transport:
         raise VerificationError("Burrow first entry has an unexpected QEMU transport branch")
     branches_to_failure_transport = [
         instruction for instruction in instructions
@@ -1507,6 +1509,176 @@ def verify_transition_preparation_disassembly(
             raise VerificationError(
                 f"transition preparation is missing the {name} failure code"
             )
+
+
+def verify_normalization_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+    *,
+    qemu_test_result: str | None,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            f"--disassemble-symbols={NORMALIZATION_SYMBOL},{COMMON_EL1_SYMBOL}",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble AArch64 normalization")
+
+    common_match = re.search(
+        rf"^([0-9a-fA-F]+) <{COMMON_EL1_SYMBOL}>:$",
+        result.stdout,
+        re.MULTILINE,
+    )
+    if common_match is None:
+        raise VerificationError("common EL1 symbol address is missing")
+    common_address = int(common_match.group(1), 16)
+
+    addressed_instructions: list[tuple[int, str]] = []
+    for line in result.stdout.splitlines():
+        match = re.match(r"^([0-9a-fA-F]+):", line.strip())
+        if match is None:
+            continue
+        instruction = line.split(":", 1)[1].split("//", 1)[0].strip()
+        addressed_instructions.append(
+            (int(match.group(1), 16), re.sub(r"\s+", " ", instruction))
+        )
+    if not addressed_instructions:
+        raise VerificationError("AArch64 normalization disassembly is empty")
+
+    pre_common = [
+        instruction for address, instruction in addressed_instructions
+        if address < common_address
+    ]
+    common_and_helpers = [
+        instruction for address, instruction in addressed_instructions
+        if address >= common_address
+    ]
+
+    def require_ordered(instructions: list[str], fragments: tuple[str, ...], name: str) -> None:
+        cursor = 0
+        for fragment in fragments:
+            while cursor < len(instructions) and fragment not in instructions[cursor]:
+                cursor += 1
+            if cursor == len(instructions):
+                raise VerificationError(
+                    f"{name} is missing ordered instruction {fragment}"
+                )
+            cursor += 1
+
+    require_ordered(
+        pre_common,
+        (
+            "cmp x21, #0x4",
+            "mrs x0, SCTLR_EL1",
+            "mov x1, #0x1005",
+            "bic x0, x0, x1",
+            "msr SCTLR_EL1, x0",
+            "isb",
+            "ic iallu",
+            "dsb sy",
+            "isb",
+            "msr CPACR_EL1, xzr",
+            "msr CNTKCTL_EL1, xzr",
+            COMMON_EL1_SYMBOL,
+        ),
+        "initial EL1 normalization route",
+    )
+
+    el1_start = next(
+        index for index, instruction in enumerate(pre_common)
+        if instruction == "mrs x0, SCTLR_EL1"
+    )
+    el1_end = next(
+        index for index in range(el1_start, len(pre_common))
+        if COMMON_EL1_SYMBOL in pre_common[index]
+    )
+    if any("_EL2" in instruction for instruction in pre_common[el1_start:el1_end + 1]):
+        raise VerificationError("initial EL1 normalization route accesses an EL2 register")
+
+    require_ordered(
+        pre_common,
+        (
+            "mrs x0, SCTLR_EL2",
+            "msr SCTLR_EL2, x0",
+            "isb",
+            "ic iallu",
+            "dsb sy",
+            "isb",
+            "mov x0, #0x80000000",
+            "msr HCR_EL2, x0",
+            "msr CPTR_EL2, xzr",
+            "mov x0, #0x3",
+            "msr CNTHCTL_EL2, x0",
+            "msr CNTVOFF_EL2, xzr",
+            "mov x0, #0x800",
+            "movk x0, #0x30d0, lsl #16",
+            "msr SCTLR_EL1, x0",
+            "msr CPACR_EL1, xzr",
+            "msr CNTKCTL_EL1, xzr",
+            "msr VBAR_EL1, x0",
+            "msr SP_EL1, x22",
+            "msr ELR_EL2, x0",
+            "mov x0, #0x3c5",
+            "msr SPSR_EL2, x0",
+            "dsb sy",
+            "isb",
+            "eret",
+        ),
+        "initial EL2 normalization route",
+    )
+    if sum(instruction == "eret" for instruction in pre_common) != 1:
+        raise VerificationError("initial EL2 route must contain exactly one ERET")
+
+    require_ordered(
+        common_and_helpers,
+        (
+            "mrs x0, CurrentEL",
+            "cmp x0, #0x4",
+            "mrs x0, DAIF",
+            "and x0, x0, #0x3c0",
+            "mov x0, sp",
+            "cmp x0, x22",
+            "mrs x0, SCTLR_EL1",
+            "tst x0, x1",
+            "burrow_image_start",
+            "ldr x1, [x20, #0x30]",
+            "mrs x0, VBAR_EL1",
+            "burrow_aarch64_emergency_vectors",
+            "mov x1, #0x3",
+            "str x1, [x0]",
+            "mov w0, #0x4c",
+            "msr DAIFSet, #0xf",
+            "wfe",
+            "mrs x0, CLIDR_EL1",
+            "mrs x2, CCSIDR_EL1",
+            "dc cisw, x9",
+            "dsb sy",
+            "isb",
+        ),
+        "common EL1 proof and cache walk",
+    )
+
+    result_branches = [
+        instruction for _, instruction in addressed_instructions
+        if instruction.startswith("b ") and "burrow_qemu_test_result" in instruction
+    ]
+    failure_branches = [
+        instruction for _, instruction in addressed_instructions
+        if instruction.startswith("b ") and "burrow_qemu_test_failure" in instruction
+    ]
+    expected_transport_count = 1 if qemu_test_result is not None else 0
+    if len(result_branches) != expected_transport_count:
+        raise VerificationError("normalization has an unexpected QEMU result branch")
+    if len(failure_branches) != expected_transport_count:
+        raise VerificationError("normalization has an unexpected QEMU failure branch")
 
 
 def verify_qemu_result_disassembly(
@@ -1693,6 +1865,11 @@ def main() -> int:
         verify_transition_preparation_disassembly(
             arguments.objdump,
             arguments.image,
+        )
+        verify_normalization_disassembly(
+            arguments.objdump,
+            arguments.image,
+            qemu_test_result=arguments.qemu_test_result,
         )
         verify_qemu_result_disassembly(
             arguments.objdump,

@@ -48,10 +48,13 @@ AArch64 assembly body records the incoming handoff state, installs the matching
 2 KiB emergency vector table, checks the fixed boot-information prefix,
 stack/register state, DAIF masks, and current EL. It then calls the retained
 shared validator and one-shot transition planner before consuming the validated
-PL011 descriptor and entering a masked wait. The terminal reporter captures
+PL011 descriptor. It then cleans and invalidates implemented data caches,
+disables inherited translation and caches, preserves the EL1 route or descends
+from EL2 with the exact normalized-entry register program, proves the common
+physical EL1h state, and enters a masked wait. The terminal reporter captures
 either EL1 or EL2 architectural exception state without using the stack. The
-image imports no runtime and does not yet normalize EL2 or call the
-architecture-neutral kernel entry.
+image imports no runtime and does not yet build owned translation tables or call
+the architecture-neutral kernel entry.
 
 ## 3. Load Image
 
@@ -300,7 +303,8 @@ same ESP through UEFI.
 
 The combined QEMU path emits `BEGIN:burrow-first-entry`, the live loaded-image
 diagnostic, a direct post-`ExitBootServices()` loader line, Burrow's observed EL
-and boot-information address, and `PASS:burrow-first-entry`. Explicit
+and boot-information address, the matching common-EL1 normalization diagnostic,
+and `PASS:burrow-first-entry`. Explicit
 `virtualization=off` and `virtualization=on` routes prove inherited EL1 and EL2.
 Burrow then uses the exact test-only `SYS_EXIT_EXTENDED` operation with status
 zero. The host requires serial/process agreement.
