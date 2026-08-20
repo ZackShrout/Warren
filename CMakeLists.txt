@@ -55,6 +55,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/plans/burrow-image.md
     docs/plans/burrow-loader.md
     docs/plans/burrow-first-entry.md
+    docs/plans/aarch64-normalized-entry.md
     docs/plans/phase-0-contracts.md
     docs/adr/0000-template.md
     docs/adr/0001-reference-target.md
@@ -75,6 +76,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/adr/0016-initial-aarch64-virtual-memory-layout.md
     docs/specifications/AARCH64_BURROW_IMAGE.md
     docs/specifications/AARCH64_LOADER_HANDOFF.md
+    docs/specifications/AARCH64_NORMALIZED_ENTRY.md
     docs/specifications/BOOT_INFORMATION_V1.md
     docs/specifications/TEST_RESULT_PROTOCOL_V1.md
     boot/Platform/QemuVirt/PostExitTestResult.s
@@ -102,6 +104,7 @@ add_custom_target(WarrenPlanning SOURCES
     tests/host/BurrowImageVerifierTests.py
     tests/host/EspBuilderTests.py
     tests/host/WarrenTestProtocolTests.py
+    tests/host/UefiSmokeHarnessTests.py
 )
 
 if(WARREN_BUILD_ENVIRONMENT STREQUAL "system")
@@ -300,6 +303,12 @@ if(NOT CMAKE_CROSSCOMPILING)
         NAME WarrenTestResultProtocol
         COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/host/WarrenTestProtocolTests.py"
+    )
+
+    add_test(
+        NAME WarrenUefiSmokeHarness
+        COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/host/UefiSmokeHarnessTests.py"
     )
 
     add_test(

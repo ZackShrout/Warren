@@ -363,16 +363,30 @@ add_test(
 set_tests_properties(WarrenSystemEspReproducibility PROPERTIES TIMEOUT 20)
 
 add_test(
-    NAME WarrenSystemBurrowFirstEntry
+    NAME WarrenSystemBurrowFirstEntryEl1
     COMMAND "${WARREN_HOST_PYTHON}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_uefi_smoke.py"
         --qemu "${WARREN_QEMU_AARCH64}"
         --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_esp}"
+        --initial-el el1
         --expected-test burrow-first-entry
 )
-set_tests_properties(WarrenSystemBurrowFirstEntry PROPERTIES TIMEOUT 40)
+set_tests_properties(WarrenSystemBurrowFirstEntryEl1 PROPERTIES TIMEOUT 40)
+
+add_test(
+    NAME WarrenSystemBurrowFirstEntryEl2
+    COMMAND "${WARREN_HOST_PYTHON}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_uefi_smoke.py"
+        --qemu "${WARREN_QEMU_AARCH64}"
+        --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
+        --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
+        --esp "${_warren_esp}"
+        --initial-el el2
+        --expected-test burrow-first-entry
+)
+set_tests_properties(WarrenSystemBurrowFirstEntryEl2 PROPERTIES TIMEOUT 40)
 
 add_test(
     NAME WarrenSystemQemuResultFailure
@@ -382,6 +396,7 @@ add_test(
         --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_fail_esp}"
+        --initial-el el1
         --expected-test burrow-first-entry
         --expected-result fail
 )
@@ -395,6 +410,7 @@ add_test(
         --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_panic_esp}"
+        --initial-el el1
         --expected-test burrow-first-entry
         --expected-result panic
 )
@@ -408,6 +424,8 @@ add_test(
         --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_first_entry_fault_esp}"
+        --initial-el el1
+        --required-el-evidence loader
         --expected-test burrow-first-entry
         --expected-result fail
         --expected-code 68
@@ -424,6 +442,8 @@ add_test(
         --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_console_fault_esp}"
+        --initial-el el1
+        --required-el-evidence loader
         --expected-test burrow-first-entry
         --expected-result fail
         --expected-code 72
@@ -440,6 +460,8 @@ add_test(
         --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_post_exit_fault_esp}"
+        --initial-el el1
+        --required-el-evidence none
         --expected-test burrow-first-entry
         --expected-result fail
         --expected-code 73

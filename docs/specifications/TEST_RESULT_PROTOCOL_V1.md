@@ -239,6 +239,25 @@ fixed PL011 independently of the rejected object; ordinary Burrow images retain
 the same classifications but enter their masked wait because they contain no
 test transport.
 
+The in-progress `aarch64-normalized-entry` test reserves the remaining adjacent
+failure classes before its result transport replaces the first-entry marker:
+
+| Code | Failure class |
+| ---: | --- |
+| `74` | Complete boot-information validation |
+| `75` | Unsupported architectural state or feature |
+| `76` | EL2 descent or common-EL1 proof |
+| `77` | Transition storage planning |
+| `78` | Table construction or descriptor audit |
+| `79` | Table activation or higher-half transfer proof |
+| `80` | Identity removal or surviving low reference |
+| `81` | Architecture-neutral C++ context or witness |
+
+Architectural traps at emergency or stable vectors continue to use common
+`PANIC` code 4. The normalized-entry implementation does not emit
+`PASS:aarch64-normalized-entry` until the C++ witness returns its exact success
+value.
+
 ## 10. Required Verification
 
 Host tests cover at least:

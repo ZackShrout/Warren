@@ -103,12 +103,15 @@ environment.
 CTest extracts the bootloader and runtime ELF from the combined ESP and compares
 their bytes to the selected inputs, proves complete ESP reproducibility,
 materializes the generated runtime ELF through the production C++ loader on the
-host, and runs the combined `burrow-first-entry` QEMU test. That gate requires
-the post-exit loader diagnostic, Burrow's first-entry witness, and agreement
-between Burrow's terminal PL011 record and QEMU semihosting status. The host
-profile also exercises independent malformed loader fixtures, handoff storage
-and finalization, the artifact verifier, ESP input failures, the
-boot-information ABI, the serial classifier, and toolchain gates.
+host, and runs the combined `burrow-first-entry` QEMU test through explicit EL1
+and EL2 profiles. `WarrenSystemBurrowFirstEntryEl1` names
+`virtualization=off`; `WarrenSystemBurrowFirstEntryEl2` names
+`virtualization=on`. Both gates require the requested post-exit loader EL,
+Burrow's matching first-entry observation, and agreement between Burrow's
+terminal PL011 record and QEMU semihosting status. The host profile also
+exercises the profile-selection logic, independent malformed loader fixtures,
+handoff storage and finalization, the artifact verifier, ESP input failures,
+the boot-information ABI, the serial classifier, and toolchain gates.
 
 The combined system build explicitly enables the test-only QEMU transport in
 its Burrow child. Focused `aarch64-debug` and `aarch64-release` products leave

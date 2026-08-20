@@ -14,12 +14,46 @@ import tempfile
 from warren_test_protocol import HostClassification, classify_process_result
 
 
+INITIAL_EL_MACHINE_CONFIGURATION = {
+    "el1": "virt-11.0,gic-version=3,virtualization=off",
+    "el2": "virt-11.0,gic-version=3,virtualization=on",
+}
+
+
+def machine_configuration(initial_el: str) -> str:
+    return INITIAL_EL_MACHINE_CONFIGURATION[initial_el]
+
+
+def required_el_evidence(initial_el: str, evidence: str) -> tuple[bytes, ...]:
+    level = initial_el[-1]
+    markers: list[bytes] = []
+
+    if evidence in ("loader", "burrow"):
+        markers.append(f"WARREN_POST_EXIT:ExitBootServices:EL{level}".encode("ascii"))
+    if evidence == "burrow":
+        markers.append(f"BURROW_FIRST_ENTRY:EL{level}:".encode("ascii"))
+
+    return tuple(markers)
+
+
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--qemu", required=True, type=pathlib.Path)
     parser.add_argument("--firmware-code", required=True, type=pathlib.Path)
     parser.add_argument("--firmware-vars", required=True, type=pathlib.Path)
     parser.add_argument("--esp", required=True, type=pathlib.Path)
+    parser.add_argument(
+        "--initial-el",
+        choices=tuple(INITIAL_EL_MACHINE_CONFIGURATION),
+        required=True,
+        help="requested firmware handoff level and exact QEMU virtualization profile",
+    )
+    parser.add_argument(
+        "--required-el-evidence",
+        choices=("none", "loader", "burrow"),
+        default="burrow",
+        help="deepest component that must report the requested initial EL",
+    )
     parser.add_argument("--expected-test", required=True)
     parser.add_argument(
         "--expected-result",
@@ -47,7 +81,7 @@ def main() -> int:
         command = [
             str(arguments.qemu),
             "-machine",
-            "virt-11.0,gic-version=3",
+            machine_configuration(arguments.initial_el),
             "-accel",
             "tcg",
             "-cpu",
@@ -94,6 +128,17 @@ def main() -> int:
             return 124
 
     sys.stdout.buffer.write(result.stdout)
+    for required in required_el_evidence(
+        arguments.initial_el,
+        arguments.required_el_evidence,
+    ):
+        if required not in result.stdout:
+            print(
+                "UEFI smoke output does not prove the requested initial "
+                f"{arguments.initial_el.upper()} route: {required.decode('ascii')}",
+                file=sys.stderr,
+            )
+            return 3
     for required_text in arguments.require_output:
         required = required_text.encode("ascii")
         if required not in result.stdout:
