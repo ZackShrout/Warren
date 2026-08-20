@@ -27,8 +27,9 @@ then materializes and independently audits bounded four-level TTBR0/TTBR1
 hierarchies in the reserved arena. It preflights every live source and target,
 activates the owned EL1 regime, branches to the stable image alias, installs the
 stable vectors and guarded stack, rebases retained resources, and replaces
-TTBR0 with an empty root. The current proof deliberately stops before entering
-architecture-neutral kernel C++.
+TTBR0 with an empty root. It then constructs the fixed 64-byte entry context,
+calls architecture-neutral kernel C++, revalidates the aliased boot object,
+writes the retained witness, and accepts only the exact success return.
 
 ## Project Vocabulary
 
@@ -116,12 +117,12 @@ The build keeps Burrow and UEFI in separate compiler environments, then places
 compares both packaged payloads, rebuilds the ESP twice for byte equality, runs
 the production loader against the generated runtime ELF on the host, and boots
 it on the pinned QEMU machine. The combined test requires matching serial and
-process results for `burrow-first-entry`: UEFI loads Burrow, constructs and
+process results for `aarch64-normalized-entry`: UEFI loads Burrow, constructs and
 validates the final boot-information object, exits boot services, and transfers
 through the reviewed AArch64 boundary; Burrow then validates the directly
 observable entry state and reports the terminal result. The system-only Burrow
 children contain the QEMU result transport. Both live profiles must also emit
-the matching `BURROW_COMMON_EL1` normalization diagnostic. Separate target
+the matching `BURROW_NORMALIZED_ENTRY` diagnostic after C++ returns. Separate target
 fixtures prove matching pass, explicit-failure, and panic serial/process
 results; UEFI fault fixtures prove rejection of malformed finalized handoff
 data and loader-side post-exit containment. Focused Burrow products do not

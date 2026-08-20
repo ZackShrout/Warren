@@ -138,9 +138,10 @@ Completed Phase 1 evidence:
   handoff object;
 - bounded `ExitBootServices()` retry discipline, reviewed AArch64 cache
   synchronization, and a nonreturning register/stack transfer boundary;
-- debug and release QEMU proof that Burrow's assembly witness executes at EL1
-  after firmware exit and reports an agreed two-channel `burrow-first-entry`
-  result; and
+- debug and release QEMU proof that Burrow accepts EL1 and EL2 firmware entry,
+  normalizes both routes to owned EL1 translation, removes identity mappings,
+  reaches its generic C++ witness, and reports an agreed two-channel
+  `aarch64-normalized-entry` result; and
 - target failure fixtures for malformed finalized header and console data,
   loader post-exit containment, and isolated pass/fail/panic transport, with
   test machinery excluded from ordinary images.

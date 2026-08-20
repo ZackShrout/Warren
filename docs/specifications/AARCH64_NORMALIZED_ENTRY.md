@@ -1,8 +1,8 @@
 # Warren AArch64 Normalized Entry
 
 **Status:** Branch implementation contract under ADR-0002, ADR-0007,
-ADR-0011, and ADR-0016; implemented through owned-table activation,
-higher-half transfer, and identity removal; generic C++ entry remains
+ADR-0011, and ADR-0016; mainline path implemented through the exact generic C++
+entry witness; negative target fixtures remain
 
 **Target:** ARMv8.0-A, non-secure AArch64 EL1 or EL2, 4 KiB pages
 

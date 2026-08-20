@@ -57,6 +57,12 @@ burrow_qemu_test_exception:
 .type burrow_qemu_test_failure, %function
 burrow_qemu_test_failure:
     movz x24, #QEMU_PL011_BASE_HIGH, lsl #16
+    cmp w0, #74
+    b.hs .Lselect_normalized_failure
+    adrp x25, .Lfirst_entry_failure_marker
+    add x25, x25, :lo12:.Lfirst_entry_failure_marker
+    adrp x18, .Lfirst_entry_failure_code_digits
+    add x18, x18, :lo12:.Lfirst_entry_failure_code_digits
     b .Lencode_failure
 
 .p2align 2
@@ -69,6 +75,12 @@ burrow_qemu_test_failure_stable:
     movk x24, #0xc000, lsl #32
     movk x24, #0xffff, lsl #48
 
+.Lselect_normalized_failure:
+    adrp x25, .Lnormalized_failure_marker
+    add x25, x25, :lo12:.Lnormalized_failure_marker
+    adrp x18, .Lnormalized_failure_code_digits
+    add x18, x18, :lo12:.Lnormalized_failure_code_digits
+
 .Lencode_failure:
     cmp w0, #FIRST_ENTRY_FAIL_MINIMUM
     b.lo .Linvalid_failure_code_wait
@@ -76,18 +88,14 @@ burrow_qemu_test_failure_stable:
     b.hi .Linvalid_failure_code_wait
 
     mov w19, w0
-    adrp x25, .Lfailure_marker
-    add x25, x25, :lo12:.Lfailure_marker
 
     mov w6, #10
     udiv w7, w19, w6
     msub w8, w7, w6, w19
     add w7, w7, #'0'
     add w8, w8, #'0'
-    adrp x6, .Lfailure_code_digits
-    add x6, x6, :lo12:.Lfailure_code_digits
-    strb w7, [x6]
-    strb w8, [x6, #1]
+    strb w7, [x18]
+    strb w8, [x18, #1]
 
     adrp x6, burrow_qemu_exit_arguments
     add x6, x6, :lo12:burrow_qemu_exit_arguments
@@ -148,20 +156,25 @@ burrow_qemu_emit_result:
 .p2align 3
 .Lterminal_marker:
 #if defined(WARREN_QEMU_TEST_RESULT_PASS)
-    .asciz "WARREN_TEST:1:PASS:burrow-first-entry\r\n"
+    .asciz "WARREN_TEST:1:PASS:aarch64-normalized-entry\r\n"
 #elif defined(WARREN_QEMU_TEST_RESULT_FAIL)
-    .asciz "WARREN_TEST:1:FAIL:burrow-first-entry:64\r\n"
+    .asciz "WARREN_TEST:1:FAIL:aarch64-normalized-entry:64\r\n"
 #elif defined(WARREN_QEMU_TEST_RESULT_PANIC)
-    .asciz "WARREN_TEST:1:PANIC:burrow-first-entry:2\r\n"
+    .asciz "WARREN_TEST:1:PANIC:aarch64-normalized-entry:2\r\n"
 #endif
 .Lexception_marker:
-    .asciz "WARREN_TEST:1:PANIC:burrow-first-entry:4\r\n"
+    .asciz "WARREN_TEST:1:PANIC:aarch64-normalized-entry:4\r\n"
 
 .section .data.burrow.qemu_test_result, "aw", %progbits
 .p2align 3
-.Lfailure_marker:
+.Lfirst_entry_failure_marker:
     .ascii "WARREN_TEST:1:FAIL:burrow-first-entry:"
-.Lfailure_code_digits:
+.Lfirst_entry_failure_code_digits:
+    .ascii "00\r\n"
+    .byte 0
+.Lnormalized_failure_marker:
+    .ascii "WARREN_TEST:1:FAIL:aarch64-normalized-entry:"
+.Lnormalized_failure_code_digits:
     .ascii "00\r\n"
     .byte 0
 .p2align 3

@@ -103,14 +103,13 @@ environment.
 CTest extracts the bootloader and runtime ELF from the combined ESP and compares
 their bytes to the selected inputs, proves complete ESP reproducibility,
 materializes the generated runtime ELF through the production C++ loader on the
-host, and runs the combined `burrow-first-entry` QEMU test through explicit EL1
-and EL2 profiles. `WarrenSystemBurrowFirstEntryEl1` names
-`virtualization=off`; `WarrenSystemBurrowFirstEntryEl2` names
+host, and runs the combined `aarch64-normalized-entry` QEMU test through explicit
+EL1 and EL2 profiles. `WarrenSystemAArch64NormalizedEntryEl1` names
+`virtualization=off`; `WarrenSystemAArch64NormalizedEntryEl2` names
 `virtualization=on`. Both gates require the requested post-exit loader EL,
 Burrow's matching first-entry observation, and agreement between Burrow's
-matching
-`BURROW_COMMON_EL1:initial=ELn:normalized=EL1:tables=audited:identity=removed`
-observation,
+matching `BURROW_NORMALIZED_ENTRY:initial=ELn:normalized=EL1:tables=owned:`
+`identity=removed:cpp=arrived` observation,
 terminal PL011 record, and QEMU semihosting status. The host profile also
 exercises the profile-selection logic, independent malformed loader fixtures,
 handoff storage and finalization, the artifact verifier, ESP input failures,
@@ -277,9 +276,10 @@ Target-only behavior runs in QEMU. A test boot has:
 
 The exact ASCII grammar, guest codes, host statuses, ordering, and disagreement
 precedence are fixed in `specifications/TEST_RESULT_PROTOCOL_V1.md`. The current
-combined proof uses the two-channel `burrow-first-entry` contract after UEFI
-boot services have ended. It proves Burrow assembly execution, not the later
-normalized kernel entry or an ordinary shutdown facility.
+combined proof uses the two-channel `aarch64-normalized-entry` contract after
+UEFI boot services have ended. It proves normalized EL1, owned higher-half
+state, identity removal, and the first Core C++ witness; it is not an ordinary
+shutdown facility.
 
 ### Interactive tests
 

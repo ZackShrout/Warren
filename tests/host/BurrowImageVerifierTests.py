@@ -29,7 +29,8 @@ from verify_burrow_image import (  # noqa: E402
     PROGRAM_TYPE_DYNAMIC,
     PROGRAM_TYPE_INTERPRETER,
     QEMU_EXCEPTION_MARKER,
-    QEMU_FAILURE_MARKER_TEMPLATE,
+    QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE,
+    QEMU_NORMALIZED_FAILURE_MARKER_TEMPLATE,
     QEMU_RESULT_ARGUMENTS,
     QEMU_RESULT_MARKERS,
     QEMU_SEMIHOST_HLT,
@@ -447,10 +448,13 @@ class BurrowImageFixtureTests(unittest.TestCase):
                 )
                 marker = QEMU_RESULT_MARKERS[mode]
                 arguments = QEMU_RESULT_ARGUMENTS[mode]
-                fixture.image[0x140 : 0x140 + len(marker)] = marker
+                fixture.image[0x1180 : 0x1180 + len(marker)] = marker
                 fixture.image[
-                    0x170 : 0x170 + len(QEMU_FAILURE_MARKER_TEMPLATE)
-                ] = QEMU_FAILURE_MARKER_TEMPLATE
+                    0x170 : 0x170 + len(QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE)
+                ] = QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE
+                fixture.image[
+                    0x1100 : 0x1100 + len(QEMU_NORMALIZED_FAILURE_MARKER_TEMPLATE)
+                ] = QEMU_NORMALIZED_FAILURE_MARKER_TEMPLATE
                 fixture.image[
                     0x1D0 : 0x1D0 + len(QEMU_EXCEPTION_MARKER)
                 ] = QEMU_EXCEPTION_MARKER
@@ -461,8 +465,12 @@ class BurrowImageFixtureTests(unittest.TestCase):
         payloads = [
             (QEMU_SEMIHOST_HLT, "QEMU semihost HLT must be absent"),
             (
-                QEMU_FAILURE_MARKER_TEMPLATE,
+                QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE,
                 "QEMU first-entry failure marker template must be absent",
+            ),
+            (
+                QEMU_NORMALIZED_FAILURE_MARKER_TEMPLATE,
+                "QEMU normalized-entry failure marker template must be absent",
             ),
             (QEMU_EXCEPTION_MARKER, "QEMU exception marker must be absent"),
         ]
@@ -484,8 +492,11 @@ class BurrowImageFixtureTests(unittest.TestCase):
             QEMU_SEMIHOST_HLT
         )
         fixture.image[
-            0x170 : 0x170 + len(QEMU_FAILURE_MARKER_TEMPLATE)
-        ] = QEMU_FAILURE_MARKER_TEMPLATE
+            0x170 : 0x170 + len(QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE)
+        ] = QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE
+        fixture.image[
+            0x1100 : 0x1100 + len(QEMU_NORMALIZED_FAILURE_MARKER_TEMPLATE)
+        ] = QEMU_NORMALIZED_FAILURE_MARKER_TEMPLATE
         fixture.image[
             0x1D0 : 0x1D0 + len(QEMU_EXCEPTION_MARKER)
         ] = QEMU_EXCEPTION_MARKER

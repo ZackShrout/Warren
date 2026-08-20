@@ -82,6 +82,7 @@ add_custom_target(WarrenPlanning SOURCES
     boot/Platform/QemuVirt/PostExitTestResult.s
     kernel/linker/AArch64/burrow.ld
     kernel/include/burrow/Core/TransitionPlan.h
+    kernel/include/burrow/Core/KernelEntry.h
     kernel/src/Arch/AArch64/EmergencyVectors.S
     kernel/src/Arch/AArch64/Entry.S
     kernel/src/Arch/AArch64/Normalization.S
@@ -91,6 +92,7 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/src/Arch/AArch64/TablePreparation.cpp
     kernel/src/Arch/AArch64/TransitionPreparation.cpp
     kernel/src/Core/ImageLayout.cpp
+    kernel/src/Core/KernelEntry.cpp
     kernel/src/Core/TransitionPlan.cpp
     kernel/src/Platform/QemuVirt/TestResult.S
     third_party/README.md
@@ -114,6 +116,9 @@ add_custom_target(WarrenPlanning SOURCES
     tests/host/EspBuilderTests.py
     tests/host/TransitionPlanTests.cpp
     tests/host/AArch64PageTableTests.cpp
+    tests/host/KernelEntryTests.cpp
+    tests/abi/KernelEntryAbiCheck.c
+    tests/abi/KernelEntryAbiCheck.cpp
     tests/host/WarrenTestProtocolTests.py
     tests/host/UefiSmokeHarnessTests.py
 )
@@ -185,6 +190,24 @@ target_include_directories(WarrenBootInformationAbiCheck PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
 )
 target_compile_options(WarrenBootInformationAbiCheck PRIVATE
+    -ffreestanding
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
+    $<$<COMPILE_LANGUAGE:CXX>:-nostdinc++>
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Werror
+)
+
+add_library(WarrenKernelEntryAbiCheck OBJECT
+    tests/abi/KernelEntryAbiCheck.c
+    tests/abi/KernelEntryAbiCheck.cpp
+)
+target_include_directories(WarrenKernelEntryAbiCheck PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+)
+target_compile_options(WarrenKernelEntryAbiCheck PRIVATE
     -ffreestanding
     $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
     $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
@@ -295,6 +318,47 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenAArch64PageTables
         COMMAND WarrenAArch64PageTableTests
+    )
+
+    add_library(WarrenKernelEntry OBJECT
+        kernel/include/burrow/Core/KernelEntry.h
+        kernel/src/Core/KernelEntry.cpp
+    )
+    target_include_directories(WarrenKernelEntry PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
+    )
+    target_compile_options(WarrenKernelEntry PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_executable(WarrenKernelEntryTests
+        tests/host/KernelEntryTests.cpp
+    )
+    target_link_libraries(WarrenKernelEntryTests PRIVATE
+        WarrenKernelEntry
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenKernelEntryTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenKernelEntry
+        COMMAND WarrenKernelEntryTests
     )
 
     add_executable(WarrenBootInformationProducerTests
@@ -509,9 +573,11 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         kernel/src/Arch/AArch64/TablePreparation.cpp
         kernel/src/Arch/AArch64/TransitionPreparation.cpp
         kernel/src/Core/ImageLayout.cpp
+        kernel/src/Core/KernelEntry.cpp
         kernel/src/Core/TransitionPlan.cpp
         sdk/src/boot/BootInformationValidation.cpp
     )
+    add_dependencies(BurrowImageObjects WarrenKernelEntryAbiCheck)
     target_include_directories(BurrowImageObjects PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"

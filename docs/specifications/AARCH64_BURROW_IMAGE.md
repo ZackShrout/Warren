@@ -58,8 +58,9 @@ branches to the stable image alias, installs the stable vectors and guarded
 stack, rebases retained resources, and replaces TTBR0 with the empty root before
 entering a masked wait. The terminal reporter captures
 either EL1 or EL2 architectural exception state without using the stack. The
-image imports no runtime and does not yet call the architecture-neutral kernel
-entry.
+image imports no runtime. Its architecture continuation constructs the fixed
+Core context, makes the one `burrow_kernel_entry` call, checks the exact witness
+result, and only then emits normalized success.
 
 ## 3. Load Image
 
@@ -88,14 +89,14 @@ the same three permission classes:
 
 | Profile | Header | Offset/address | File size | Memory size | Flags |
 | --- | --- | ---: | ---: | ---: | --- |
-| Debug | `PT_LOAD` | `0x0000` | `0x029F` | `0x029F` | R |
-| Debug | `PT_LOAD` | `0x1000` | `0x842C` | `0x842C` | RX |
-| Debug | `PT_LOAD` | `0xA000` | `0x00D8` | `0x04A8` | RW |
+| Debug | `PT_LOAD` | `0x0000` | `0x02AF` | `0x02AF` | R |
+| Debug | `PT_LOAD` | `0x1000` | `0x87E4` | `0x87E4` | RX |
+| Debug | `PT_LOAD` | `0xA000` | `0x00D8` | `0x04B0` | RW |
 | Debug | `PT_DYNAMIC` / `PT_GNU_RELRO` | `0xA078` | `0x0060` | `0x0060` | RW / R |
-| Release | `PT_LOAD` | `0x0000` | `0x02B0` | `0x02B0` | R |
-| Release | `PT_LOAD` | `0x1000` | `0x4EC0` | `0x4EC0` | RX |
-| Release | `PT_LOAD` | `0x6000` | `0x00D8` | `0x04A8` | RW |
-| Release | `PT_DYNAMIC` / `PT_GNU_RELRO` | `0x6078` | `0x0060` | `0x0060` | RW / R |
+| Release | `PT_LOAD` | `0x0000` | `0x02C0` | `0x02C0` | R |
+| Release | `PT_LOAD` | `0x1000` | `0x5048` | `0x5048` | RX |
+| Release | `PT_LOAD` | `0x7000` | `0x00D8` | `0x04B0` | RW |
+| Release | `PT_DYNAMIC` / `PT_GNU_RELRO` | `0x7078` | `0x0060` | `0x0060` | RW / R |
 | Both | `PT_GNU_STACK` | `0x0000` | `0` | `0` | RW, non-executable |
 
 The exact current sizes are evidence for the minimal image, not reserved ABI
@@ -113,9 +114,9 @@ The runtime copy currently retains these sections:
 | `.dynstr` | `SHT_STRTAB` | R | `0x01C4` |
 | `.rodata` | `SHT_PROGBITS`, A | R | `0x01D0` |
 | `.text` | `SHT_PROGBITS`, AX | RX | `0x1000` |
-| `.data` | `SHT_PROGBITS`, WA | RW | `0x6000` / `0x4000` |
-| `.dynamic` | `SHT_DYNAMIC`, WA | RW | `0x6078` / `0x4078` |
-| `.bss` | `SHT_NOBITS`, WA | RW | `0x60E0` / `0x40E0` |
+| `.data` | `SHT_PROGBITS`, WA | RW | `0xA000` / `0x7000` |
+| `.dynamic` | `SHT_DYNAMIC`, WA | RW | `0xA078` / `0x7078` |
+| `.bss` | `SHT_NOBITS`, WA | RW | `0xA0E0` / `0x70E0` |
 | `.symtab`, `.strtab`, `.shstrtab` | Symbol/strings | Not loaded | no runtime address |
 
 Allocated sections are wholly contained by a compatible load class. A
@@ -306,10 +307,10 @@ the selected inputs, build the combined image twice and require identical
 SHA-256 bytes, exercise the generated ELF through production C++, and boot the
 same ESP through UEFI.
 
-The combined QEMU path emits `BEGIN:burrow-first-entry`, the live loaded-image
+The combined QEMU path emits `BEGIN:aarch64-normalized-entry`, the live loaded-image
 diagnostic, a direct post-`ExitBootServices()` loader line, Burrow's observed EL
-and boot-information address, the matching common-EL1 normalization diagnostic,
-and `PASS:burrow-first-entry`. Explicit
+and boot-information address, the matching normalized-entry diagnostic after
+the Core witness, and `PASS:aarch64-normalized-entry`. Explicit
 `virtualization=off` and `virtualization=on` routes prove inherited EL1 and EL2.
 Burrow then uses the exact test-only `SYS_EXIT_EXTENDED` operation with status
 zero. The host requires serial/process agreement.

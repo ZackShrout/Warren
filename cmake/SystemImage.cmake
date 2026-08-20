@@ -409,7 +409,7 @@ add_test(
 set_tests_properties(WarrenSystemEspReproducibility PROPERTIES TIMEOUT 20)
 
 add_test(
-    NAME WarrenSystemBurrowFirstEntryEl1
+    NAME WarrenSystemAArch64NormalizedEntryEl1
     COMMAND "${WARREN_HOST_PYTHON}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_uefi_smoke.py"
         --qemu "${WARREN_QEMU_AARCH64}"
@@ -417,13 +417,13 @@ add_test(
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_esp}"
         --initial-el el1
-        --expected-test burrow-first-entry
-        --require-output "BURROW_COMMON_EL1:initial=EL1:normalized=EL1:tables=audited:identity=removed"
+        --expected-test aarch64-normalized-entry
+        --require-output "BURROW_NORMALIZED_ENTRY:initial=EL1:normalized=EL1:tables=owned:identity=removed:cpp=arrived"
 )
-set_tests_properties(WarrenSystemBurrowFirstEntryEl1 PROPERTIES TIMEOUT 40)
+set_tests_properties(WarrenSystemAArch64NormalizedEntryEl1 PROPERTIES TIMEOUT 40)
 
 add_test(
-    NAME WarrenSystemBurrowFirstEntryEl2
+    NAME WarrenSystemAArch64NormalizedEntryEl2
     COMMAND "${WARREN_HOST_PYTHON}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_uefi_smoke.py"
         --qemu "${WARREN_QEMU_AARCH64}"
@@ -431,10 +431,10 @@ add_test(
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_esp}"
         --initial-el el2
-        --expected-test burrow-first-entry
-        --require-output "BURROW_COMMON_EL1:initial=EL2:normalized=EL1:tables=audited:identity=removed"
+        --expected-test aarch64-normalized-entry
+        --require-output "BURROW_NORMALIZED_ENTRY:initial=EL2:normalized=EL1:tables=owned:identity=removed:cpp=arrived"
 )
-set_tests_properties(WarrenSystemBurrowFirstEntryEl2 PROPERTIES TIMEOUT 40)
+set_tests_properties(WarrenSystemAArch64NormalizedEntryEl2 PROPERTIES TIMEOUT 40)
 
 add_test(
     NAME WarrenSystemEmergencyVectorEl1
@@ -445,7 +445,7 @@ add_test(
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_emergency_fault_esp}"
         --initial-el el1
-        --expected-test burrow-first-entry
+        --expected-test aarch64-normalized-entry
         --expected-result panic
         --expected-code 4
         --require-output "BURROW_EXCEPTION:stage=2:vector=4:el=1:esr=0x00000000F2000777:"
@@ -461,7 +461,7 @@ add_test(
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_emergency_fault_esp}"
         --initial-el el2
-        --expected-test burrow-first-entry
+        --expected-test aarch64-normalized-entry
         --expected-result panic
         --expected-code 4
         --require-output "BURROW_EXCEPTION:stage=2:vector=4:el=2:esr=0x00000000F2000777:"
@@ -477,7 +477,7 @@ add_test(
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_fail_esp}"
         --initial-el el1
-        --expected-test burrow-first-entry
+        --expected-test aarch64-normalized-entry
         --expected-result fail
 )
 set_tests_properties(WarrenSystemQemuResultFailure PROPERTIES TIMEOUT 40)
@@ -491,7 +491,7 @@ add_test(
         --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
         --esp "${_warren_panic_esp}"
         --initial-el el1
-        --expected-test burrow-first-entry
+        --expected-test aarch64-normalized-entry
         --expected-result panic
 )
 set_tests_properties(WarrenSystemQemuResultPanic PROPERTIES TIMEOUT 40)
@@ -524,7 +524,7 @@ add_test(
         --esp "${_warren_console_fault_esp}"
         --initial-el el1
         --required-el-evidence loader
-        --expected-test burrow-first-entry
+        --expected-test aarch64-normalized-entry
         --expected-result fail
         --expected-code 74
         --require-output "WARREN_POST_EXIT:ExitBootServices:EL1"

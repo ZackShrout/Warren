@@ -10,6 +10,7 @@
 
 .equ ACTIVATION_FAILURE,           79
 .equ IDENTITY_REMOVAL_FAILURE,     80
+.equ KERNEL_ENTRY_FAILURE,         81
 
 .section .text.burrow_aarch64_activation, "ax", %progbits
 .p2align 2
@@ -163,6 +164,70 @@ burrow_aarch64_activate_translation:
     mov x1, #8
     str x1, [x0]
 
+    // Construct the immutable 64-byte Core context at the top of the owned
+    // stack. x22 retains the exact stack top across the one C++ call.
+    mov x22, x16
+    sub sp, sp, #64
+    mov x0, sp
+    mov w1, #1
+    str w1, [x0, #0x00]
+    mov w1, #64
+    str w1, [x0, #0x04]
+    mov x1, #3
+    str x1, [x0, #0x08]
+    str x20, [x0, #0x10]
+
+    movz x2, #0x0000
+    movk x2, #0x8000, lsl #32
+    movk x2, #0xffff, lsl #48
+    sub x2, x20, x2
+    str x2, [x0, #0x18]
+
+    adrp x2, burrow_aarch64_validated_boot_information
+    add x2, x2, :lo12:burrow_aarch64_validated_boot_information
+    ldr x3, [x2, #0x10]
+    lsr x4, x3, #32
+    cbnz x4, .Lkernel_entry_failure
+    str w3, [x0, #0x20]
+    lsr w3, w21, #2
+    str w3, [x0, #0x24]
+    str x17, [x0, #0x28]
+    mov x3, #128
+    str x3, [x0, #0x30]
+    adrp x3, burrow_kernel_entry_retained_witness
+    add x3, x3, :lo12:burrow_kernel_entry_retained_witness
+    str x3, [x0, #0x38]
+
+    mov x1, xzr
+    mov x2, xzr
+    mov x3, xzr
+    mov x4, xzr
+    mov x5, xzr
+    mov x6, xzr
+    mov x7, xzr
+    bl burrow_kernel_entry
+
+    movz w1, #0x5231
+    movk w1, #0x5741, lsl #16
+    cmp w0, w1
+    b.ne .Lkernel_entry_failure
+
+    adrp x2, burrow_kernel_entry_retained_witness
+    add x2, x2, :lo12:burrow_kernel_entry_retained_witness
+    ldr x3, [x2]
+    movz x4, #0x3031
+    movk x4, #0x454e, lsl #16
+    movk x4, #0x5252, lsl #32
+    movk x4, #0x5741, lsl #48
+    cmp x3, x4
+    b.ne .Lkernel_entry_failure
+    mov sp, x22
+
+    adrp x0, burrow_aarch64_transition_stage
+    add x0, x0, :lo12:burrow_aarch64_transition_stage
+    mov x1, #9
+    str x1, [x0]
+
     adrp x25, .Lactivation_diagnostic_prefix
     add x25, x25, :lo12:.Lactivation_diagnostic_prefix
     bl .Lactivation_write_string
@@ -196,6 +261,15 @@ burrow_aarch64_activate_translation:
     b burrow_qemu_test_failure_stable
 #endif
 
+.Lkernel_entry_failure:
+    mov sp, x22
+    mov w0, #KERNEL_ENTRY_FAILURE
+#if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
+    b burrow_qemu_test_failure_stable
+#else
+    b .Lactivation_wait
+#endif
+
 .Lactivation_wait:
     msr DAIFSet, #0xf
 .Lactivation_wait_loop:
@@ -223,8 +297,8 @@ burrow_aarch64_activate_translation:
 .section .rodata.burrow.activation, "a", %progbits
 .p2align 3
 .Lactivation_diagnostic_prefix:
-    .asciz "BURROW_COMMON_EL1:initial=EL"
+    .asciz "BURROW_NORMALIZED_ENTRY:initial=EL"
 .Lactivation_diagnostic_suffix:
-    .asciz ":normalized=EL1:tables=audited:identity=removed\r\n"
+    .asciz ":normalized=EL1:tables=owned:identity=removed:cpp=arrived\r\n"
 
 .section .note.GNU-stack, "", %progbits

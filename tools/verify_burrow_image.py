@@ -124,15 +124,21 @@ EMERGENCY_REPORTER_SYMBOL = "burrow_aarch64_emergency_exception"
 NORMALIZATION_SYMBOL = "burrow_aarch64_normalize"
 COMMON_EL1_SYMBOL = "burrow_aarch64_common_el1"
 ACTIVATION_SYMBOL = "burrow_aarch64_activate_translation"
+KERNEL_ENTRY_SYMBOL = "burrow_kernel_entry"
 QEMU_SEMIHOST_HLT = bytes.fromhex("00005ed4")
-QEMU_PASS_MARKER = b"WARREN_TEST:1:PASS:burrow-first-entry\r\n\0"
-QEMU_FAILURE_MARKER_TEMPLATE = b"WARREN_TEST:1:FAIL:burrow-first-entry:00\r\n\0"
-QEMU_EXCEPTION_MARKER = b"WARREN_TEST:1:PANIC:burrow-first-entry:4\r\n\0"
+QEMU_PASS_MARKER = b"WARREN_TEST:1:PASS:aarch64-normalized-entry\r\n\0"
+QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE = (
+    b"WARREN_TEST:1:FAIL:burrow-first-entry:00\r\n\0"
+)
+QEMU_NORMALIZED_FAILURE_MARKER_TEMPLATE = (
+    b"WARREN_TEST:1:FAIL:aarch64-normalized-entry:00\r\n\0"
+)
+QEMU_EXCEPTION_MARKER = b"WARREN_TEST:1:PANIC:aarch64-normalized-entry:4\r\n\0"
 QEMU_EXIT_ARGUMENTS = struct.pack("<QQ", 0x20026, 0)
 QEMU_RESULT_MARKERS = {
     "pass": QEMU_PASS_MARKER,
-    "fail": b"WARREN_TEST:1:FAIL:burrow-first-entry:64\r\n\0",
-    "panic": b"WARREN_TEST:1:PANIC:burrow-first-entry:2\r\n\0",
+    "fail": b"WARREN_TEST:1:FAIL:aarch64-normalized-entry:64\r\n\0",
+    "panic": b"WARREN_TEST:1:PANIC:aarch64-normalized-entry:2\r\n\0",
 }
 QEMU_RESULT_ARGUMENTS = {
     "pass": QEMU_EXIT_ARGUMENTS,
@@ -1119,14 +1125,18 @@ def _validate_qemu_test_result_transport(
             f"QEMU semihost HLT must be {requirement}, found {hlt_count}"
         )
 
-    failure_template_count = loaded_bytes.count(QEMU_FAILURE_MARKER_TEMPLATE)
     expected_failure_template_count = 1 if mode is not None else 0
-    if failure_template_count != expected_failure_template_count:
-        requirement = "exactly once" if mode is not None else "absent"
-        raise VerificationError(
-            "QEMU first-entry failure marker template must be "
-            f"{requirement}, found {failure_template_count}"
-        )
+    for marker, name in (
+        (QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE, "first-entry"),
+        (QEMU_NORMALIZED_FAILURE_MARKER_TEMPLATE, "normalized-entry"),
+    ):
+        failure_template_count = loaded_bytes.count(marker)
+        if failure_template_count != expected_failure_template_count:
+            requirement = "exactly once" if mode is not None else "absent"
+            raise VerificationError(
+                f"QEMU {name} failure marker template must be "
+                f"{requirement}, found {failure_template_count}"
+            )
 
     exception_marker_count = loaded_bytes.count(QEMU_EXCEPTION_MARKER)
     expected_exception_marker_count = 1 if mode is not None else 0
@@ -1846,6 +1856,17 @@ def verify_activation_disassembly(
         "mrs x0, SCTLR_EL1",
         "mov x1, #0x8",
         "str x1, [x0]",
+        "sub sp, sp, #0x40",
+        "mov x0, sp",
+        "mov x1, xzr",
+        "mov x7, xzr",
+        KERNEL_ENTRY_SYMBOL,
+        "mov w1, #0x5231",
+        "movk w1, #0x5741, lsl #16",
+        "cmp w0, w1",
+        "mov sp, x22",
+        "mov x1, #0x9",
+        "str x1, [x0]",
     ):
         while cursor < len(instructions) and fragment not in instructions[cursor]:
             cursor += 1
@@ -1871,7 +1892,7 @@ def verify_activation_disassembly(
     ]
     expected = 1 if qemu_test_result is not None else 0
     if len(result_branches) != expected or len(low_failure_branches) != expected or \
-            len(stable_failure_branches) != expected:
+            len(stable_failure_branches) != 2 * expected:
         raise VerificationError("activation has an unexpected QEMU transport branch")
 
     boundary_begin = next(
@@ -1890,6 +1911,13 @@ def verify_activation_disassembly(
         raise VerificationError(
             "activation register boundary uses a call, return, or stack reference"
         )
+
+    kernel_entry_calls = [
+        instruction for instruction in instructions
+        if instruction.startswith("bl ") and KERNEL_ENTRY_SYMBOL in instruction
+    ]
+    if len(kernel_entry_calls) != 1:
+        raise VerificationError("activation must call burrow_kernel_entry exactly once")
 
 
 def verify_qemu_result_disassembly(
@@ -1980,8 +2008,8 @@ def verify_qemu_result_disassembly(
         "mov x24, #0x9000000",
         "udiv w7, w19, w6",
         "msub w8, w7, w6, w19",
-        "strb w7, [x6]",
-        "strb w8, [x6, #0x1]",
+        "strb w7, [x18]",
+        "strb w8, [x18, #0x1]",
         "str x5, [x6, #0x8]",
         "b ",
         "msr DAIFSet, #0xf",
