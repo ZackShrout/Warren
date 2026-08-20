@@ -1,8 +1,8 @@
 # Warren AArch64 Normalized Entry
 
 **Status:** Branch implementation contract under ADR-0002, ADR-0007,
-ADR-0011, and ADR-0016; mainline path implemented through the exact generic C++
-entry witness; negative target fixtures remain
+ADR-0011, and ADR-0016; mainline path and the complete target-fault matrix are
+implemented; final branch reconciliation remains
 
 **Target:** ARMv8.0-A, non-secure AArch64 EL1 or EL2, 4 KiB pages
 
@@ -350,8 +350,11 @@ Debug and Release verification must locate and check, from the linked objects:
 
 Host tests independently exercise the validator consumer, arena planner, table
 walker, activation preflight, context ABI, and generic entry witness. Live tests
-cover both initial exception levels plus emergency/stable vector, both guard,
-text-write, data-execute, and stale-identity faults.
+cover both initial exception levels, emergency faults at inherited EL1/EL2, a
+common-EL1 fault before table activation, every assigned failure from 75
+through 81, and stable-vector faults for both guards, text-write, data-execute,
+and stale-identity probes. Stable protection probes require the exact stage-8
+ESR class and, for both guards, the exact fault address.
 
 ## 13. Architecture References
 

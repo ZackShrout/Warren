@@ -119,10 +119,20 @@ The combined system build explicitly enables the test-only QEMU transport in
 its Burrow child. Focused `aarch64-debug` and `aarch64-release` products leave
 that option off, and their artifact verification rejects the semihosting trap,
 terminal markers, argument blocks, and fault injection. The system build also
-composes dedicated failure, panic, and emergency-vector ESP fixtures.
+composes dedicated failure, panic, emergency-vector, transition-failure, guard,
+permission, and stale-alias ESP fixtures.
 `WarrenSystemEmergencyVectorEl1` and `WarrenSystemEmergencyVectorEl2` inject the
 same `BRK #0x777` after the validated console record and require vector class 4,
 stage 2, ESR `0xF2000777`, the requested current EL, and agreed `PANIC`/4.
+`WarrenSystemCommonEl1Vector` injects `BRK #0x779` after both entry routes have
+reached the common physical EL1 state and requires stage 3, ESR `0xF2000779`,
+EL1, and agreed `PANIC`/4.
+The `WarrenSystemRejects*` normalized-entry fixtures exercise every assigned
+failure code from 75 through 81 and forbid the C++ arrival diagnostic. The
+lower/upper-stack-guard, text-write, data-execute, and stale-identity tests run
+after TTBR0 removal through the stable EL1 vector table. They require exact
+stage-8 translation, write-permission, execute-permission, and level-0 stale-
+alias syndromes respectively, plus agreed `PANIC`/4 terminal results.
 `WarrenSystemQemuResultFailure` requires an agreed `FAIL`/64 result, while
 `WarrenSystemQemuResultPanic` requires an agreed
 `PANIC`/2 result through the same QEMU harness used by the successful boot.

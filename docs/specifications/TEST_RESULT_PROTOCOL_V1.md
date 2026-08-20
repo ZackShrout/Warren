@@ -273,6 +273,13 @@ Architectural traps at emergency or stable vectors continue to use common
 `PASS:aarch64-normalized-entry` until the C++ witness returns its exact success
 value.
 
+Dedicated build-time-only target fixtures route each code 75–81 through the
+same bounded reporter used by its production failure class. Separate stable-
+vector fixtures access both unmapped guard pages, attempt a write to executable
+read-only text, branch to writable execute-never data, and access a removed
+physical identity alias. Those architectural probes require exact stage-8 ESR
+evidence and `PANIC`/4 rather than accepting a timeout or generic failure.
+
 ## 10. Required Verification
 
 Host tests cover at least:
@@ -289,7 +296,9 @@ Host tests cover at least:
 
 The target test matrix proves the exact AArch64 trap and argument block with
 pass, fail, and panic images. The transport fixtures select `PASS`/0, `FAIL`/64,
-or `PANIC`/2 at build time. A separate UEFI fixture corrupts the finalized magic
+or `PANIC`/2 at build time. Normalized-entry fixtures additionally prove every
+assigned failure code and the stable protection faults described above. A
+separate UEFI fixture corrupts the finalized magic
 after successful `ExitBootServices()` and requires Burrow to reject it with
 `FAIL`/68 without emitting its first-entry success diagnostic. A second clears
 the finalized console output flag and requires complete-consumer `FAIL`/74

@@ -146,6 +146,40 @@ QEMU_RESULT_ARGUMENTS = {
     "panic": struct.pack("<QQ", 0x20026, 2),
 }
 
+AARCH64_FAULT_SENTINELS = {
+    "emergency": "mov w15, #0xf100",
+    "planning": "mov w15, #0xf101",
+    "unsupported-feature": "mov w15, #0xf102",
+    "common-el1": "mov w15, #0xf103",
+    "tables": "mov w15, #0xf104",
+    "activation": "mov w15, #0xf105",
+    "identity-failure": "mov w15, #0xf106",
+    "kernel-entry": "mov w15, #0xf107",
+    "lower-guard": "mov w15, #0xf110",
+    "upper-guard": "mov w15, #0xf111",
+    "text-write": "mov w15, #0xf112",
+    "data-execute": "mov w15, #0xf113",
+    "stale-identity": "mov w15, #0xf114",
+    "common-el1-vector": "mov w15, #0xf115",
+}
+
+AARCH64_FAULT_OPERATIONS = {
+    "emergency": "brk #0x777",
+    "planning": "mov w0, #0x4d",
+    "unsupported-feature": "mov x0, #0xf0000000",
+    "common-el1": "mov w0, #0x4c",
+    "tables": "str xzr, [x2, #0x2b8]",
+    "activation": "mov w0, #0x4f",
+    "identity-failure": "b ",
+    "kernel-entry": "mov w0, wzr",
+    "lower-guard": "ldr x0, [x0]",
+    "upper-guard": "ldr x0, [x0]",
+    "text-write": "str xzr, [x0]",
+    "data-execute": "br x0",
+    "stale-identity": "ldr x0, [x0]",
+    "common-el1-vector": "brk #0x779",
+}
+
 _FORBIDDEN_PROGRAM_TYPES = {
     PROGRAM_TYPE_INTERPRETER: "PT_INTERP",
     PROGRAM_TYPE_NOTE: "PT_NOTE",
@@ -2052,6 +2086,61 @@ def verify_qemu_result_disassembly(
             )
 
 
+def verify_aarch64_fault_injection_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+    *,
+    selected_fault: str | None,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble AArch64 fault injection")
+
+    instructions: list[str] = []
+    for line in result.stdout.splitlines():
+        if not re.match(r"^[0-9a-fA-F]+:", line.strip()):
+            continue
+        instruction = line.split(":", 1)[1].split("//", 1)[0].strip()
+        instructions.append(re.sub(r"\s+", " ", instruction))
+
+    observed = [
+        (fault, index)
+        for fault, sentinel in AARCH64_FAULT_SENTINELS.items()
+        for index, instruction in enumerate(instructions)
+        if instruction == sentinel
+    ]
+    expected = [] if selected_fault is None else [selected_fault]
+    if [fault for fault, _ in observed] != expected:
+        raise VerificationError(
+            "AArch64 fault injection sentinels do not match the selected fixture"
+        )
+    if selected_fault is None:
+        return
+
+    sentinel_index = observed[0][1]
+    operation = AARCH64_FAULT_OPERATIONS[selected_fault]
+    window = instructions[sentinel_index + 1 : sentinel_index + 9]
+    if operation == "b ":
+        matched = any(instruction.startswith(operation) for instruction in window)
+    else:
+        matched = operation in window
+    if not matched:
+        raise VerificationError(
+            f"AArch64 {selected_fault} fixture is missing its fault operation"
+        )
+
+
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Verify Warren's AArch64 Burrow ELF image contract."
@@ -2075,7 +2164,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--aarch64-entry-fault",
-        choices=("emergency",),
+        choices=tuple(AARCH64_FAULT_SENTINELS),
         help="require one selected test-only AArch64 entry fault",
     )
     return parser.parse_args()
@@ -2123,6 +2212,11 @@ def main() -> int:
             arguments.objdump,
             arguments.image,
             mode=arguments.qemu_test_result,
+        )
+        verify_aarch64_fault_injection_disassembly(
+            arguments.objdump,
+            arguments.image,
+            selected_fault=arguments.aarch64_entry_fault,
         )
         if arguments.reference_image is not None:
             if not arguments.runtime:

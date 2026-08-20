@@ -530,7 +530,7 @@ endif()
 
 if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     option(WARREN_ENABLE_QEMU_TEST_RESULT
-        "Enable Burrow's QEMU-only first-entry result transport"
+        "Enable Burrow's QEMU-only normalized-entry result transport"
         OFF
     )
     set(WARREN_QEMU_TEST_RESULT_MODE "pass" CACHE STRING
@@ -543,7 +543,21 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         "Trusted QEMU-only AArch64 entry fault fixture"
     )
     set_property(CACHE WARREN_AARCH64_ENTRY_FAULT PROPERTY STRINGS
-        none emergency
+        none
+        emergency
+        common-el1-vector
+        unsupported-feature
+        common-el1
+        planning
+        tables
+        activation
+        lower-guard
+        upper-guard
+        text-write
+        data-execute
+        stale-identity
+        identity-failure
+        kernel-entry
     )
 
     if(WARREN_ENABLE_QEMU_TEST_RESULT AND
@@ -552,9 +566,10 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             "WARREN_QEMU_TEST_RESULT_MODE must be pass, fail, or panic"
         )
     endif()
-    if(NOT WARREN_AARCH64_ENTRY_FAULT MATCHES "^(none|emergency)$")
+    if(NOT WARREN_AARCH64_ENTRY_FAULT MATCHES
+       "^(none|emergency|common-el1-vector|unsupported-feature|common-el1|planning|tables|activation|lower-guard|upper-guard|text-write|data-execute|stale-identity|identity-failure|kernel-entry)$")
         message(FATAL_ERROR
-            "WARREN_AARCH64_ENTRY_FAULT must be none or emergency"
+            "WARREN_AARCH64_ENTRY_FAULT has an unsupported value"
         )
     endif()
     if(NOT WARREN_AARCH64_ENTRY_FAULT STREQUAL "none" AND
@@ -594,9 +609,9 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         set(_burrow_result_mode_upper "PASS")
         set(_burrow_verifier_result_arguments)
     endif()
-    if(WARREN_AARCH64_ENTRY_FAULT STREQUAL "emergency")
+    if(NOT WARREN_AARCH64_ENTRY_FAULT STREQUAL "none")
         set(_burrow_verifier_fault_arguments
-            --aarch64-entry-fault emergency
+            --aarch64-entry-fault "${WARREN_AARCH64_ENTRY_FAULT}"
         )
     else()
         set(_burrow_verifier_fault_arguments)
@@ -633,8 +648,15 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:NDEBUG>
         $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>>:WARREN_ENABLE_QEMU_TEST_RESULT=1>
         $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>>:WARREN_QEMU_TEST_RESULT_${_burrow_result_mode_upper}=1>
-        $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<STREQUAL:${WARREN_AARCH64_ENTRY_FAULT},emergency>>:WARREN_AARCH64_FAULT_INJECT_EMERGENCY=1>
     )
+    if(NOT WARREN_AARCH64_ENTRY_FAULT STREQUAL "none")
+        string(TOUPPER "${WARREN_AARCH64_ENTRY_FAULT}" _burrow_entry_fault_upper)
+        string(REPLACE "-" "_" _burrow_entry_fault_upper
+            "${_burrow_entry_fault_upper}")
+        target_compile_definitions(BurrowImageObjects PRIVATE
+            $<$<COMPILE_LANGUAGE:ASM>:WARREN_AARCH64_FAULT_INJECT_${_burrow_entry_fault_upper}=1>
+        )
+    endif()
 
     set(_burrow_artifact_directory "${CMAKE_CURRENT_BINARY_DIR}/artifacts")
     set(_burrow_symbol_image "${_burrow_artifact_directory}/burrow.elf")

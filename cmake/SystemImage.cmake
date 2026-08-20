@@ -37,6 +37,21 @@ set(_warren_burrow_fail_build "${_warren_product_root}/burrow-fail")
 set(_warren_burrow_panic_build "${_warren_product_root}/burrow-panic")
 set(_warren_burrow_emergency_fault_build
     "${_warren_product_root}/burrow-emergency-fault")
+set(_warren_aarch64_faults
+    common-el1-vector
+    unsupported-feature
+    common-el1
+    planning
+    tables
+    activation
+    lower-guard
+    upper-guard
+    text-write
+    data-execute
+    stale-identity
+    identity-failure
+    kernel-entry
+)
 set(_warren_uefi_build "${_warren_product_root}/uefi")
 set(_warren_uefi_first_entry_fault_build "${_warren_product_root}/uefi-first-entry-fault")
 set(_warren_uefi_console_fault_build "${_warren_product_root}/uefi-console-fault")
@@ -62,6 +77,20 @@ set(_warren_fail_esp "${_warren_artifact_directory}/warren-system-fail-esp.img")
 set(_warren_panic_esp "${_warren_artifact_directory}/warren-system-panic-esp.img")
 set(_warren_emergency_fault_esp
     "${_warren_artifact_directory}/warren-system-emergency-fault-esp.img")
+set(_warren_aarch64_fault_esps)
+foreach(_warren_fault IN LISTS _warren_aarch64_faults)
+    string(REPLACE "-" "_" _warren_fault_key "${_warren_fault}")
+    set(_warren_fault_build
+        "${_warren_product_root}/burrow-${_warren_fault}-fault")
+    set(_warren_fault_image
+        "${_warren_fault_build}/artifacts/burrow-runtime.elf")
+    set(_warren_fault_esp
+        "${_warren_artifact_directory}/warren-system-${_warren_fault}-fault-esp.img")
+    set("_warren_fault_${_warren_fault_key}_build" "${_warren_fault_build}")
+    set("_warren_fault_${_warren_fault_key}_image" "${_warren_fault_image}")
+    set("_warren_fault_${_warren_fault_key}_esp" "${_warren_fault_esp}")
+    list(APPEND _warren_aarch64_fault_esps "${_warren_fault_esp}")
+endforeach()
 set(_warren_first_entry_fault_esp
     "${_warren_artifact_directory}/warren-system-first-entry-fault-esp.img")
 set(_warren_console_fault_esp
@@ -148,6 +177,31 @@ add_custom_target(WarrenSystemBurrowEmergencyFault
     USES_TERMINAL
     VERBATIM
 )
+
+foreach(_warren_fault IN LISTS _warren_aarch64_faults)
+    string(REPLACE "-" "_" _warren_fault_key "${_warren_fault}")
+    set(_warren_fault_build "${_warren_fault_${_warren_fault_key}_build}")
+    set(_warren_fault_image "${_warren_fault_${_warren_fault_key}_image}")
+    add_custom_target("WarrenSystemBurrowFault-${_warren_fault}"
+        COMMAND "${CMAKE_COMMAND}"
+            -S "${CMAKE_CURRENT_SOURCE_DIR}"
+            -B "${_warren_fault_build}"
+            -G Ninja
+            -DCMAKE_MAKE_PROGRAM=${WARREN_HOST_NINJA}
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchains/AArch64Warren.cmake
+            -DWARREN_BUILD_ENVIRONMENT=burrow
+            -DWARREN_ENABLE_QEMU_TEST_RESULT=ON
+            -DWARREN_QEMU_TEST_RESULT_MODE=pass
+            -DWARREN_AARCH64_ENTRY_FAULT=${_warren_fault}
+        COMMAND "${CMAKE_COMMAND}"
+            --build "${_warren_fault_build}"
+            --target BurrowImage
+        BYPRODUCTS "${_warren_fault_image}"
+        USES_TERMINAL
+        VERBATIM
+    )
+endforeach()
 
 add_custom_target(WarrenSystemHostLoader
     COMMAND "${CMAKE_COMMAND}"
@@ -312,6 +366,30 @@ add_custom_command(
     VERBATIM
 )
 
+foreach(_warren_fault IN LISTS _warren_aarch64_faults)
+    string(REPLACE "-" "_" _warren_fault_key "${_warren_fault}")
+    set(_warren_fault_image "${_warren_fault_${_warren_fault_key}_image}")
+    set(_warren_fault_esp "${_warren_fault_${_warren_fault_key}_esp}")
+    add_custom_command(
+        OUTPUT "${_warren_fault_esp}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_warren_artifact_directory}"
+        COMMAND "${WARREN_HOST_PYTHON}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_esp.py"
+            --mformat "${WARREN_MFORMAT}"
+            --mcopy "${WARREN_MCOPY}"
+            --bootloader "${_warren_bootloader}"
+            --burrow "${_warren_fault_image}"
+            --output "${_warren_fault_esp}"
+        DEPENDS
+            "WarrenSystemBurrowFault-${_warren_fault}"
+            WarrenSystemUefi
+            "${_warren_fault_image}"
+            "${_warren_bootloader}"
+            tools/build_esp.py
+        VERBATIM
+    )
+endforeach()
+
 add_custom_command(
     OUTPUT "${_warren_first_entry_fault_esp}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${_warren_artifact_directory}"
@@ -374,6 +452,7 @@ add_custom_target(WarrenSystemImage ALL DEPENDS
     "${_warren_fail_esp}"
     "${_warren_panic_esp}"
     "${_warren_emergency_fault_esp}"
+    ${_warren_aarch64_fault_esps}
     "${_warren_first_entry_fault_esp}"
     "${_warren_console_fault_esp}"
     "${_warren_post_exit_fault_esp}"
@@ -467,6 +546,105 @@ add_test(
         --require-output "BURROW_EXCEPTION:stage=2:vector=4:el=2:esr=0x00000000F2000777:"
 )
 set_tests_properties(WarrenSystemEmergencyVectorEl2 PROPERTIES TIMEOUT 40)
+
+function(warren_add_aarch64_fault_test
+    test_name
+    fault
+    expected_result
+    expected_code)
+    string(REPLACE "-" "_" _fault_key "${fault}")
+    set(_fault_esp_variable "_warren_fault_${_fault_key}_esp")
+    add_test(
+        NAME "${test_name}"
+        COMMAND "${WARREN_HOST_PYTHON}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_uefi_smoke.py"
+            --qemu "${WARREN_QEMU_AARCH64}"
+            --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
+            --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
+            --esp "${${_fault_esp_variable}}"
+            --initial-el el1
+            --expected-test aarch64-normalized-entry
+            --expected-result "${expected_result}"
+            --expected-code "${expected_code}"
+            ${ARGN}
+    )
+    set_tests_properties("${test_name}" PROPERTIES TIMEOUT 40)
+endfunction()
+
+warren_add_aarch64_fault_test(
+    WarrenSystemCommonEl1Vector
+    common-el1-vector panic 4
+    --require-output "BURROW_EXCEPTION:stage=3:vector=4:el=1:esr=0x00000000F2000779:"
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemRejectsUnsupportedFeature
+    unsupported-feature fail 75
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemRejectsCommonEl1State
+    common-el1 fail 76
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemRejectsTransitionPlanning
+    planning fail 77
+    --required-el-evidence loader
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemRejectsOwnedTables
+    tables fail 78
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemRejectsActivationPreflight
+    activation fail 79
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemLowerStackGuard
+    lower-guard panic 4
+    --require-output "BURROW_EXCEPTION:stage=8:vector=4:el=1:esr=0x0000000096000007:"
+    --require-output ":far=0xFFFFD00000000000:"
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemUpperStackGuard
+    upper-guard panic 4
+    --require-output "BURROW_EXCEPTION:stage=8:vector=4:el=1:esr=0x0000000096000007:"
+    --require-output ":far=0xFFFFD00000011000:"
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemTextWriteProtection
+    text-write panic 4
+    --require-output "BURROW_EXCEPTION:stage=8:vector=4:el=1:esr=0x000000009600004F:"
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemDataExecuteProtection
+    data-execute panic 4
+    --require-output "BURROW_EXCEPTION:stage=8:vector=4:el=1:esr=0x000000008600000F:"
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemStaleIdentityAlias
+    stale-identity panic 4
+    --require-output "BURROW_EXCEPTION:stage=8:vector=4:el=1:esr=0x0000000096000004:"
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemRejectsIdentityRemovalProof
+    identity-failure fail 80
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemRejectsKernelEntryWitness
+    kernel-entry fail 81
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
 
 add_test(
     NAME WarrenSystemQemuResultFailure

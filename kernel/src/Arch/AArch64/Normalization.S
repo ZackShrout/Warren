@@ -129,7 +129,25 @@ burrow_aarch64_common_el1:
     mov x1, #3
     str x1, [x0]
 
+#if defined(WARREN_AARCH64_FAULT_INJECT_COMMON_EL1_VECTOR)
+    mov w15, #0xf115
+    brk #0x779
+#elif defined(WARREN_AARCH64_FAULT_INJECT_COMMON_EL1)
+    mov w15, #0xf103
+    mov w0, #NORMALIZATION_FAILURE
+    b .Lreport_normalization_failure
+#endif
+
     mrs x0, ID_AA64MMFR0_EL1
+#if defined(WARREN_AARCH64_FAULT_INJECT_UNSUPPORTED_FEATURE)
+    mov w15, #0xf102
+    mov x0, #0xf0000000
+#elif defined(WARREN_AARCH64_FAULT_INJECT_TABLES)
+    mov w15, #0xf104
+    adrp x2, burrow_aarch64_transition_plan
+    add x2, x2, :lo12:burrow_aarch64_transition_plan
+    str xzr, [x2, #0x2b8]
+#endif
     bl burrow_aarch64_build_transition_tables
     cbnz w0, .Lreport_normalization_failure
     b burrow_aarch64_activate_translation

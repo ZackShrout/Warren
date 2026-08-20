@@ -171,6 +171,10 @@ burrow_aarch64_entry:
     mov w1, w19
     mov x2, x20
     bl burrow_aarch64_prepare_transition
+#if defined(WARREN_AARCH64_FAULT_INJECT_PLANNING)
+    mov w15, #0xf101
+    mov w0, #77
+#endif
     cbnz w0, .Lreport_first_entry_failure
 
     add x6, x20, #EARLY_CONSOLE_SECTION
@@ -260,6 +264,7 @@ burrow_aarch64_entry:
     bl .Lwrite_character
 
 #if defined(WARREN_AARCH64_FAULT_INJECT_EMERGENCY)
+    mov w15, #0xf100
     brk #0x777
 #endif
 

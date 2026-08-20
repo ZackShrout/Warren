@@ -122,11 +122,13 @@ validates the final boot-information object, exits boot services, and transfers
 through the reviewed AArch64 boundary; Burrow then validates the directly
 observable entry state and reports the terminal result. The system-only Burrow
 children contain the QEMU result transport. Both live profiles must also emit
-the matching `BURROW_NORMALIZED_ENTRY` diagnostic after C++ returns. Separate target
-fixtures prove matching pass, explicit-failure, and panic serial/process
-results; UEFI fault fixtures prove rejection of malformed finalized handoff
-data and loader-side post-exit containment. Focused Burrow products do not
-contain that transport.
+the matching `BURROW_NORMALIZED_ENTRY` diagnostic after C++ returns. Separate
+target fixtures prove matching pass, explicit-failure, and panic serial/process
+results, every normalized failure allocation from 75 through 81, both stack
+guards, text-write and data-execute protection, and stale-identity removal.
+UEFI fault fixtures prove rejection of malformed finalized handoff data and
+loader-side post-exit containment. Focused Burrow products do not contain that
+transport or any fault injection.
 
 Before final map capture, loader diagnostics use the UEFI console. After a
 successful exit, the loader and first-entry witness use minimal direct PL011

@@ -113,9 +113,12 @@ Burrow at `EFI/WARREN/BURROW.ELF`. Only that combined image owns the current
 `aarch64-normalized-entry` QEMU result. Burrow emits the terminal serial record and
 uses the test-only semihosting exit; the host requires both channels to agree.
 Dedicated pass, explicit-failure, and panic Burrow children prove the transport
-without adding it to the ordinary kernel image. Separate UEFI fault fixtures
-prove Burrow rejects finalized header and console corruption and prove the
-loader's post-exit failure containment without entering Burrow.
+without adding it to the ordinary kernel image. Build-time-only Burrow children
+also prove exact failures 75–81 and take real stable-vector faults for both
+stack guards, text writes, data execution, and removed identity aliases.
+Separate UEFI fault fixtures prove Burrow rejects finalized header and console
+corruption and prove the loader's post-exit failure containment without
+entering Burrow.
 
 Loader diagnostics use the UEFI console only before the final memory-map
 transaction. After successful exit, the loader and Burrow witness use bounded

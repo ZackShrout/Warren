@@ -43,6 +43,10 @@ burrow_aarch64_activate_translation:
     mov x4, x28
     mov x5, x27
     bl burrow_aarch64_preflight_activation
+#if defined(WARREN_AARCH64_FAULT_INJECT_ACTIVATION)
+    mov w15, #0xf105
+    mov w0, #ACTIVATION_FAILURE
+#endif
 .Lactivation_preflight_anchor:
     cbnz w0, .Lactivation_failure
 
@@ -164,6 +168,41 @@ burrow_aarch64_activate_translation:
     mov x1, #8
     str x1, [x0]
 
+#if defined(WARREN_AARCH64_FAULT_INJECT_LOWER_GUARD)
+    mov w15, #0xf110
+    movz x0, #0x0000
+    movk x0, #0x0000, lsl #16
+    movk x0, #0xd000, lsl #32
+    movk x0, #0xffff, lsl #48
+    ldr x0, [x0]
+#elif defined(WARREN_AARCH64_FAULT_INJECT_UPPER_GUARD)
+    mov w15, #0xf111
+    movz x0, #0x1000
+    movk x0, #0x0001, lsl #16
+    movk x0, #0xd000, lsl #32
+    movk x0, #0xffff, lsl #48
+    ldr x0, [x0]
+#elif defined(WARREN_AARCH64_FAULT_INJECT_TEXT_WRITE)
+    mov w15, #0xf112
+    adr x0, .Lidentity_proof_pc
+    str xzr, [x0]
+#elif defined(WARREN_AARCH64_FAULT_INJECT_DATA_EXECUTE)
+    mov w15, #0xf113
+    adrp x0, burrow_aarch64_transition_stage
+    add x0, x0, :lo12:burrow_aarch64_transition_stage
+    br x0
+#elif defined(WARREN_AARCH64_FAULT_INJECT_STALE_IDENTITY)
+    mov w15, #0xf114
+    movz x0, #0x0000
+    movk x0, #0x8000, lsl #32
+    movk x0, #0xffff, lsl #48
+    sub x0, x20, x0
+    ldr x0, [x0]
+#elif defined(WARREN_AARCH64_FAULT_INJECT_IDENTITY_FAILURE)
+    mov w15, #0xf106
+    b .Lidentity_removal_failure
+#endif
+
     // Construct the immutable 64-byte Core context at the top of the owned
     // stack. x22 retains the exact stack top across the one C++ call.
     mov x22, x16
@@ -206,6 +245,10 @@ burrow_aarch64_activate_translation:
     mov x6, xzr
     mov x7, xzr
     bl burrow_kernel_entry
+#if defined(WARREN_AARCH64_FAULT_INJECT_KERNEL_ENTRY)
+    mov w15, #0xf107
+    mov w0, wzr
+#endif
 
     movz w1, #0x5231
     movk w1, #0x5741, lsl #16
