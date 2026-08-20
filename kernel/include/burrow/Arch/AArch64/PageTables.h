@@ -36,6 +36,21 @@ namespace burrow::arch::aarch64 {
         uint32_t ips_encoding;
     };
 
+    struct activation_preflight_t
+    {
+        core::physical_address_t current_program_counter;
+        core::physical_address_t current_stack_pointer;
+        core::physical_address_t boot_information_physical_address;
+        core::physical_address_t target_program_counter_physical_address;
+        core::virtual_address_t target_program_counter_virtual_address;
+        core::physical_address_t stable_vectors_physical_address;
+        core::virtual_address_t stable_vectors_virtual_address;
+        core::virtual_address_t owned_stack_pointer;
+        core::virtual_address_t boot_information_virtual_address;
+        core::virtual_address_t arena_virtual_address;
+        core::virtual_address_t console_virtual_address;
+    };
+
     enum class page_table_error_t : uint32_t
     {
         success = 0,
@@ -59,6 +74,25 @@ namespace burrow::arch::aarch64 {
         writable_executable_alias = 18,
     };
 
+    enum class activation_preflight_error_t : uint32_t
+    {
+        success = 0,
+        invalid_tables = 1,
+        invalid_runtime_state = 2,
+        missing_current_program_counter = 3,
+        missing_current_stack = 4,
+        missing_boot_information_identity = 5,
+        missing_table_identity = 6,
+        missing_console_identity = 7,
+        missing_target_program_counter = 8,
+        missing_stable_vectors = 9,
+        missing_owned_stack = 10,
+        missing_boot_information_alias = 11,
+        missing_arena_alias = 12,
+        missing_console_alias = 13,
+        mapped_stack_guard = 14,
+    };
+
     [[nodiscard]] page_table_error_t build_page_tables(
         uint64_t id_aa64mmfr0_el1,
         const core::transition_plan_t& plan,
@@ -70,7 +104,16 @@ namespace burrow::arch::aarch64 {
         const core::transition_plan_t& plan,
         const page_table_storage_t& storage,
         const translation_configuration_t& configuration) noexcept;
+
+    [[nodiscard]] activation_preflight_error_t preflight_activation(
+        uint64_t id_aa64mmfr0_el1,
+        const core::transition_plan_t& plan,
+        const page_table_storage_t& storage,
+        const translation_configuration_t& configuration,
+        const activation_preflight_t& preflight) noexcept;
 } // namespace burrow::arch::aarch64
 
 static_assert(sizeof(burrow::arch::aarch64::translation_configuration_t) == 56);
 static_assert(alignof(burrow::arch::aarch64::translation_configuration_t) == 8);
+static_assert(sizeof(burrow::arch::aarch64::activation_preflight_t) == 88);
+static_assert(alignof(burrow::arch::aarch64::activation_preflight_t) == 8);

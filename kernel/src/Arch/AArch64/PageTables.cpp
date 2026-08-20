@@ -67,6 +67,13 @@ namespace burrow::arch::aarch64 {
             uint64_t descriptor;
         };
 
+        enum class mapping_check_t
+        {
+            success,
+            missing,
+            invalid,
+        };
+
         void clear_configuration(translation_configuration_t& configuration) noexcept
         {
             configuration.ttbr0_root_physical_address = { 0 };
@@ -621,6 +628,49 @@ namespace burrow::arch::aarch64 {
                 return { page_table_error_t::invalid_page_descriptor, false, 0 };
             return { page_table_error_t::success, true, descriptor };
         }
+
+        [[nodiscard]] mapping_check_t check_leaf(
+            const page_table_storage_t& storage,
+            const translation_configuration_t& configuration,
+            uint64_t virtual_address,
+            uint64_t physical_address,
+            core::transition_memory_type_t memory_type,
+            uint32_t permissions) noexcept
+        {
+            if ((virtual_address & k_page_mask) != (physical_address & k_page_mask))
+                return mapping_check_t::missing;
+
+            const lookup_result_t found{ lookup(storage, configuration, virtual_address) };
+            if (found.error != page_table_error_t::success)
+                return mapping_check_t::invalid;
+            if (!found.present) return mapping_check_t::missing;
+
+            core::transition_mapping_t expected{};
+            expected.memory_type = memory_type;
+            expected.permissions = permissions;
+            const uint64_t physical_page{ physical_address & ~k_page_mask };
+            return found.descriptor == page_descriptor(expected, physical_page) ?
+                mapping_check_t::success : mapping_check_t::missing;
+        }
+
+        [[nodiscard]] activation_preflight_error_t require_leaf(
+            const page_table_storage_t& storage,
+            const translation_configuration_t& configuration,
+            uint64_t virtual_address,
+            uint64_t physical_address,
+            core::transition_memory_type_t memory_type,
+            uint32_t permissions,
+            activation_preflight_error_t missing_error) noexcept
+        {
+            const mapping_check_t result{
+                check_leaf(storage, configuration, virtual_address, physical_address,
+                           memory_type, permissions)
+            };
+            if (result == mapping_check_t::invalid)
+                return activation_preflight_error_t::invalid_tables;
+            return result == mapping_check_t::success ?
+                activation_preflight_error_t::success : missing_error;
+        }
     } // anonymous namespace
 
     page_table_error_t build_page_tables(
@@ -779,5 +829,173 @@ namespace burrow::arch::aarch64 {
             return page_table_error_t::unexpected_leaf;
 
         return page_table_error_t::success;
+    }
+
+    activation_preflight_error_t preflight_activation(
+        uint64_t id_aa64mmfr0_el1,
+        const core::transition_plan_t& plan,
+        const page_table_storage_t& storage,
+        const translation_configuration_t& configuration,
+        const activation_preflight_t& preflight) noexcept
+    {
+        if (audit_page_tables(id_aa64mmfr0_el1, plan, storage, configuration) !=
+            page_table_error_t::success)
+            return activation_preflight_error_t::invalid_tables;
+
+        uint64_t expected_boot_virtual{ 0 };
+        uint64_t expected_arena_virtual{ 0 };
+        if (preflight.current_program_counter.value == 0 ||
+            preflight.current_stack_pointer.value == 0 ||
+            (preflight.current_stack_pointer.value & 0xf) != 0 ||
+            preflight.boot_information_physical_address.value == 0 ||
+            preflight.target_program_counter_physical_address.value == 0 ||
+            preflight.stable_vectors_physical_address.value == 0 ||
+            (preflight.stable_vectors_physical_address.value & 0x7ff) != 0 ||
+            (preflight.stable_vectors_virtual_address.value & 0x7ff) != 0 ||
+            preflight.target_program_counter_virtual_address.value <
+                core::k_kernel_virtual_bias ||
+            preflight.stable_vectors_virtual_address.value <
+                core::k_kernel_virtual_bias ||
+            preflight.owned_stack_pointer.value != plan.early_stack_virtual_top.value ||
+            !add_without_overflow(core::k_direct_map_virtual_bias,
+                                  preflight.boot_information_physical_address.value,
+                                  expected_boot_virtual) ||
+            !add_without_overflow(core::k_direct_map_virtual_bias,
+                                  plan.arena_physical_start.value,
+                                  expected_arena_virtual) ||
+            preflight.boot_information_virtual_address.value != expected_boot_virtual ||
+            preflight.arena_virtual_address.value != expected_arena_virtual ||
+            preflight.console_virtual_address.value !=
+                core::k_reference_pl011_virtual_address)
+            return activation_preflight_error_t::invalid_runtime_state;
+
+        constexpr uint32_t read{ core::k_transition_permission_read };
+        constexpr uint32_t read_write{
+            read | core::k_transition_permission_write
+        };
+        constexpr uint32_t read_execute{
+            read | core::k_transition_permission_execute
+        };
+        activation_preflight_error_t result{ require_leaf(
+            storage, configuration,
+            preflight.current_program_counter.value,
+            preflight.current_program_counter.value,
+            core::transition_memory_type_t::normal,
+            read_execute,
+            activation_preflight_error_t::missing_current_program_counter)
+        };
+        if (result != activation_preflight_error_t::success) return result;
+
+        result = require_leaf(
+            storage, configuration,
+            preflight.current_stack_pointer.value - 1,
+            preflight.current_stack_pointer.value - 1,
+            core::transition_memory_type_t::normal,
+            read_write,
+            activation_preflight_error_t::missing_current_stack);
+        if (result != activation_preflight_error_t::success) return result;
+
+        result = require_leaf(
+            storage, configuration,
+            preflight.boot_information_physical_address.value,
+            preflight.boot_information_physical_address.value,
+            core::transition_memory_type_t::normal,
+            read,
+            activation_preflight_error_t::missing_boot_information_identity);
+        if (result != activation_preflight_error_t::success) return result;
+
+        const uint64_t table_identity_addresses[]{
+            plan.empty_root_physical_address.value,
+            configuration.ttbr0_root_physical_address.value,
+            configuration.ttbr1_root_physical_address.value,
+        };
+        for (const uint64_t address : table_identity_addresses)
+        {
+            result = require_leaf(
+                storage, configuration, address, address,
+                core::transition_memory_type_t::normal,
+                read_write,
+                activation_preflight_error_t::missing_table_identity);
+            if (result != activation_preflight_error_t::success) return result;
+        }
+
+        result = require_leaf(
+            storage, configuration,
+            plan.console_physical_address.value,
+            plan.console_physical_address.value,
+            core::transition_memory_type_t::device,
+            read_write,
+            activation_preflight_error_t::missing_console_identity);
+        if (result != activation_preflight_error_t::success) return result;
+
+        result = require_leaf(
+            storage, configuration,
+            preflight.target_program_counter_virtual_address.value,
+            preflight.target_program_counter_physical_address.value,
+            core::transition_memory_type_t::normal,
+            read_execute,
+            activation_preflight_error_t::missing_target_program_counter);
+        if (result != activation_preflight_error_t::success) return result;
+
+        result = require_leaf(
+            storage, configuration,
+            preflight.stable_vectors_virtual_address.value,
+            preflight.stable_vectors_physical_address.value,
+            core::transition_memory_type_t::normal,
+            read_execute,
+            activation_preflight_error_t::missing_stable_vectors);
+        if (result != activation_preflight_error_t::success) return result;
+
+        result = require_leaf(
+            storage, configuration,
+            preflight.owned_stack_pointer.value - 1,
+            plan.early_stack_physical_start.value +
+                plan.early_stack_page_count.value * core::k_transition_page_size - 1,
+            core::transition_memory_type_t::normal,
+            read_write,
+            activation_preflight_error_t::missing_owned_stack);
+        if (result != activation_preflight_error_t::success) return result;
+
+        result = require_leaf(
+            storage, configuration,
+            preflight.boot_information_virtual_address.value,
+            preflight.boot_information_physical_address.value,
+            core::transition_memory_type_t::normal,
+            read,
+            activation_preflight_error_t::missing_boot_information_alias);
+        if (result != activation_preflight_error_t::success) return result;
+
+        result = require_leaf(
+            storage, configuration,
+            preflight.arena_virtual_address.value,
+            plan.arena_physical_start.value,
+            core::transition_memory_type_t::normal,
+            read_write,
+            activation_preflight_error_t::missing_arena_alias);
+        if (result != activation_preflight_error_t::success) return result;
+
+        result = require_leaf(
+            storage, configuration,
+            preflight.console_virtual_address.value,
+            plan.console_physical_address.value,
+            core::transition_memory_type_t::device,
+            read_write,
+            activation_preflight_error_t::missing_console_alias);
+        if (result != activation_preflight_error_t::success) return result;
+
+        const uint64_t guards[]{
+            core::k_early_stack_guard_start,
+            preflight.owned_stack_pointer.value,
+        };
+        for (const uint64_t guard : guards)
+        {
+            const lookup_result_t found{ lookup(storage, configuration, guard) };
+            if (found.error != page_table_error_t::success)
+                return activation_preflight_error_t::invalid_tables;
+            if (found.present)
+                return activation_preflight_error_t::mapped_stack_guard;
+        }
+
+        return activation_preflight_error_t::success;
     }
 } // namespace burrow::arch::aarch64

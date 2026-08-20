@@ -132,25 +132,7 @@ burrow_aarch64_common_el1:
     mrs x0, ID_AA64MMFR0_EL1
     bl burrow_aarch64_build_transition_tables
     cbnz w0, .Lreport_normalization_failure
-
-    adrp x25, .Lcommon_el1_diagnostic_prefix
-    add x25, x25, :lo12:.Lcommon_el1_diagnostic_prefix
-    bl .Lnormalization_write_string
-    cmp x21, #8
-    mov w4, #'1'
-    mov w5, #'2'
-    csel w4, w5, w4, eq
-    bl .Lnormalization_write_character
-    adrp x25, .Lcommon_el1_diagnostic_suffix
-    add x25, x25, :lo12:.Lcommon_el1_diagnostic_suffix
-    bl .Lnormalization_write_string
-
-#if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
-    mov x0, x24
-    b burrow_qemu_test_result
-#else
-    b .Lnormalization_wait
-#endif
+    b burrow_aarch64_activate_translation
 
 .Lnormalization_failure:
     mov w0, #NORMALIZATION_FAILURE
@@ -218,29 +200,6 @@ burrow_aarch64_common_el1:
     ret
 .size .Lclean_invalidate_data_caches, . - .Lclean_invalidate_data_caches
 
-.Lnormalization_write_string:
-    mov x28, x30
-.Lnormalization_write_string_next:
-    ldrb w4, [x25], #1
-    cbz w4, .Lnormalization_write_string_done
-    bl .Lnormalization_write_character
-    b .Lnormalization_write_string_next
-.Lnormalization_write_string_done:
-    ret x28
-
-.Lnormalization_write_character:
-    ldr w5, [x24, #0x18]
-    tst w5, #0x20
-    b.ne .Lnormalization_write_character
-    str w4, [x24]
-    ret
 .size burrow_aarch64_normalize, . - burrow_aarch64_normalize
-
-.section .rodata.burrow.normalization, "a", %progbits
-.p2align 3
-.Lcommon_el1_diagnostic_prefix:
-    .asciz "BURROW_COMMON_EL1:initial=EL"
-.Lcommon_el1_diagnostic_suffix:
-    .asciz ":normalized=EL1:tables=audited\r\n"
 
 .section .note.GNU-stack, "", %progbits

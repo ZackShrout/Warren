@@ -1,7 +1,7 @@
 # Warren Architecture
 
-**Status:** Phase 0 contracts accepted; Phase 1 owned table construction
-implemented
+**Status:** Phase 0 contracts accepted; Phase 1 normalized higher-half entry
+implemented through identity removal
 
 **Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
 
@@ -15,9 +15,9 @@ boundary performs complete boot-information validation and immutable transition
 planning. Architecture assembly then removes inherited firmware translation
 and cache state and converges both inherited EL1 and EL2 routes at one physical,
 MMU-off EL1h label. The common path builds and independently audits the bounded
-owned translation hierarchy without activating it. Burrow still stops before
-owned-table activation, higher-half transfer, or architecture-neutral kernel
-entry. Stable decisions are
+owned translation hierarchy, activates it, transfers to the stable image,
+installs the owned vectors and guarded stack, and removes every TTBR0 identity
+mapping. Burrow still stops before architecture-neutral kernel entry. Stable decisions are
 recorded in `docs/adr/`, and exact subordinate formats live in
 `docs/specifications/`.
 
@@ -343,7 +343,8 @@ Nothing becomes stable merely because it was committed once.
 The Phase 0 decision queue is empty. First Light's focused register-level
 EL2/EL1 normalization sequence is implemented under ADR-0011 and proven through
 both live firmware entry paths. Owned translation activation, higher-half
-transfer, identity removal, and the architecture-neutral C++ boundary remain.
+transfer, and identity removal are also implemented and proven through both
+routes. The architecture-neutral C++ boundary remains.
 
 Later decisions include the syscall ABI, kernel object model, scheduler policy,
 VFS semantics, libc strategy, service model, package format, graphics stack, and

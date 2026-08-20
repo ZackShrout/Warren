@@ -56,13 +56,26 @@ burrow_qemu_test_exception:
 .hidden burrow_qemu_test_failure
 .type burrow_qemu_test_failure, %function
 burrow_qemu_test_failure:
+    movz x24, #QEMU_PL011_BASE_HIGH, lsl #16
+    b .Lencode_failure
+
+.p2align 2
+.global burrow_qemu_test_failure_stable
+.hidden burrow_qemu_test_failure_stable
+.type burrow_qemu_test_failure_stable, %function
+burrow_qemu_test_failure_stable:
+    movz x24, #0x0000
+    movk x24, #0x0900, lsl #16
+    movk x24, #0xc000, lsl #32
+    movk x24, #0xffff, lsl #48
+
+.Lencode_failure:
     cmp w0, #FIRST_ENTRY_FAIL_MINIMUM
     b.lo .Linvalid_failure_code_wait
     cmp w0, #FIRST_ENTRY_FAIL_MAXIMUM
     b.hi .Linvalid_failure_code_wait
 
     mov w19, w0
-    movz x24, #QEMU_PL011_BASE_HIGH, lsl #16
     adrp x25, .Lfailure_marker
     add x25, x25, :lo12:.Lfailure_marker
 
@@ -88,6 +101,7 @@ burrow_qemu_test_failure:
     wfe
     b .Linvalid_failure_code_wait_loop
 .size burrow_qemu_test_failure, . - burrow_qemu_test_failure
+.size burrow_qemu_test_failure_stable, . - burrow_qemu_test_failure_stable
 
 .p2align 2
 .global burrow_qemu_emit_result

@@ -109,7 +109,8 @@ and EL2 profiles. `WarrenSystemBurrowFirstEntryEl1` names
 `virtualization=on`. Both gates require the requested post-exit loader EL,
 Burrow's matching first-entry observation, and agreement between Burrow's
 matching
-`BURROW_COMMON_EL1:initial=ELn:normalized=EL1:tables=audited` observation,
+`BURROW_COMMON_EL1:initial=ELn:normalized=EL1:tables=audited:identity=removed`
+observation,
 terminal PL011 record, and QEMU semihosting status. The host profile also
 exercises the profile-selection logic, independent malformed loader fixtures,
 handoff storage and finalization, the artifact verifier, ESP input failures,

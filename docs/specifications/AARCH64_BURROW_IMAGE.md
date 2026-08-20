@@ -52,11 +52,14 @@ PL011 descriptor. It then cleans and invalidates implemented data caches,
 disables inherited translation and caches, preserves the EL1 route or descends
 from EL2 with the exact normalized-entry register program, proves the common
 physical EL1h state, validates the architectural translation features, and
-builds and independently audits the fixed-capacity table hierarchy before
+builds and independently audits the fixed-capacity table hierarchy. It then
+preflights the live mappings, activates the owned EL1 translation registers,
+branches to the stable image alias, installs the stable vectors and guarded
+stack, rebases retained resources, and replaces TTBR0 with the empty root before
 entering a masked wait. The terminal reporter captures
 either EL1 or EL2 architectural exception state without using the stack. The
-image imports no runtime and does not yet activate the owned tables or call the
-architecture-neutral kernel entry.
+image imports no runtime and does not yet call the architecture-neutral kernel
+entry.
 
 ## 3. Load Image
 
@@ -85,14 +88,14 @@ the same three permission classes:
 
 | Profile | Header | Offset/address | File size | Memory size | Flags |
 | --- | --- | ---: | ---: | ---: | --- |
-| Debug | `PT_LOAD` | `0x0000` | `0x024F` | `0x024F` | R |
-| Debug | `PT_LOAD` | `0x1000` | `0x4748` | `0x4748` | RX |
-| Debug | `PT_LOAD` | `0x6000` | `0x00D8` | `0x0428` | RW |
-| Debug | `PT_DYNAMIC` / `PT_GNU_RELRO` | `0x6078` | `0x0060` | `0x0060` | RW / R |
-| Release | `PT_LOAD` | `0x0000` | `0x0247` | `0x0247` | R |
-| Release | `PT_LOAD` | `0x1000` | `0x2D70` | `0x2D70` | RX |
-| Release | `PT_LOAD` | `0x4000` | `0x00D8` | `0x0428` | RW |
-| Release | `PT_DYNAMIC` / `PT_GNU_RELRO` | `0x4078` | `0x0060` | `0x0060` | RW / R |
+| Debug | `PT_LOAD` | `0x0000` | `0x029F` | `0x029F` | R |
+| Debug | `PT_LOAD` | `0x1000` | `0x842C` | `0x842C` | RX |
+| Debug | `PT_LOAD` | `0xA000` | `0x00D8` | `0x04A8` | RW |
+| Debug | `PT_DYNAMIC` / `PT_GNU_RELRO` | `0xA078` | `0x0060` | `0x0060` | RW / R |
+| Release | `PT_LOAD` | `0x0000` | `0x02B0` | `0x02B0` | R |
+| Release | `PT_LOAD` | `0x1000` | `0x4EC0` | `0x4EC0` | RX |
+| Release | `PT_LOAD` | `0x6000` | `0x00D8` | `0x04A8` | RW |
+| Release | `PT_DYNAMIC` / `PT_GNU_RELRO` | `0x6078` | `0x0060` | `0x0060` | RW / R |
 | Both | `PT_GNU_STACK` | `0x0000` | `0` | `0` | RW, non-executable |
 
 The exact current sizes are evidence for the minimal image, not reserved ABI

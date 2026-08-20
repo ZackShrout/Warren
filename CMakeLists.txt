@@ -85,6 +85,7 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/src/Arch/AArch64/EmergencyVectors.S
     kernel/src/Arch/AArch64/Entry.S
     kernel/src/Arch/AArch64/Normalization.S
+    kernel/src/Arch/AArch64/Activation.S
     kernel/include/burrow/Arch/AArch64/PageTables.h
     kernel/src/Arch/AArch64/PageTables.cpp
     kernel/src/Arch/AArch64/TablePreparation.cpp
@@ -500,6 +501,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     endif()
 
     add_library(BurrowImageObjects OBJECT
+        kernel/src/Arch/AArch64/Activation.S
         kernel/src/Arch/AArch64/EmergencyVectors.S
         kernel/src/Arch/AArch64/Entry.S
         kernel/src/Arch/AArch64/Normalization.S

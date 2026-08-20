@@ -24,8 +24,10 @@ stays at EL1, while the inherited EL2 route performs the reviewed one-way
 `ERET`; both reach the same physical, MMU-off EL1h state with masked DAIF. The
 common path validates the implemented 4 KiB granule and physical-address width,
 then materializes and independently audits bounded four-level TTBR0/TTBR1
-hierarchies in the reserved arena. The current proof deliberately stops before
-activating those mappings, installing stable higher-half vectors, or entering
+hierarchies in the reserved arena. It preflights every live source and target,
+activates the owned EL1 regime, branches to the stable image alias, installs the
+stable vectors and guarded stack, rebases retained resources, and replaces
+TTBR0 with an empty root. The current proof deliberately stops before entering
 architecture-neutral kernel C++.
 
 ## Project Vocabulary
@@ -127,9 +129,10 @@ contain that transport.
 
 Before final map capture, loader diagnostics use the UEFI console. After a
 successful exit, the loader and first-entry witness use minimal direct PL011
-output under the inherited firmware identity mapping; the common-EL1 witness
-uses the same validated physical aperture after inherited translation is off.
-That one-way output is not the later reusable Burrow console. Semihosting exists
+output under the inherited firmware identity mapping. The normalized witness
+uses the checked upper MMIO alias after owned translation is active and every
+identity mapping has been removed. That one-way output is not the later
+reusable Burrow console. Semihosting exists
 only in trusted QEMU test artifacts and is neither an ordinary shutdown path nor
 a physical-machine interface.
 

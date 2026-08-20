@@ -12,6 +12,8 @@ namespace
 {
     using burrow::arch::aarch64::page_table_error_t;
     using burrow::arch::aarch64::page_table_storage_t;
+    using burrow::arch::aarch64::activation_preflight_error_t;
+    using burrow::arch::aarch64::activation_preflight_t;
     using burrow::arch::aarch64::translation_configuration_t;
     using burrow::core::transition_mapping_t;
     using burrow::core::transition_memory_type_t;
@@ -153,6 +155,31 @@ namespace
                                     page_table_error_t expected) noexcept
     {
         return expect_u64(name, static_cast<uint32_t>(actual), static_cast<uint32_t>(expected));
+    }
+
+    [[nodiscard]] bool expect_preflight_error(
+        const char* name,
+        activation_preflight_error_t actual,
+        activation_preflight_error_t expected) noexcept
+    {
+        return expect_u64(name, static_cast<uint32_t>(actual), static_cast<uint32_t>(expected));
+    }
+
+    [[nodiscard]] activation_preflight_t make_preflight() noexcept
+    {
+        return {
+            { k_image_physical + 0x1000 },
+            { k_bootstrap_stack_physical + 16 * 4096 },
+            { k_boot_physical },
+            { k_image_physical + 0x1000 },
+            { burrow::core::k_kernel_virtual_bias + 0x1000 },
+            { k_image_physical + 0x1800 },
+            { burrow::core::k_kernel_virtual_bias + 0x1800 },
+            { burrow::core::k_early_stack_virtual_top },
+            { burrow::core::k_direct_map_virtual_bias + k_boot_physical },
+            { burrow::core::k_direct_map_virtual_bias + k_arena_physical },
+            { burrow::core::k_reference_pl011_virtual_address },
+        };
     }
 
     [[nodiscard]] uint64_t* table_for_physical(fixture_t& fixture, uint64_t physical) noexcept
@@ -510,6 +537,91 @@ namespace
             page_table_error_t::invalid_plan);
         return passed;
     }
+
+    [[nodiscard]] bool run_activation_preflight_tests() noexcept
+    {
+        fixture_t fixture{};
+        initialize(fixture);
+        if (!build(fixture)) return false;
+
+        bool passed{ expect_preflight_error(
+            "complete activation preflight",
+            burrow::arch::aarch64::preflight_activation(
+                k_feature_40_bit, fixture.plan, fixture.storage,
+                fixture.configuration, make_preflight()),
+            activation_preflight_error_t::success) };
+
+        activation_preflight_t invalid_stack{ make_preflight() };
+        invalid_stack.current_stack_pointer.value++;
+        passed &= expect_preflight_error(
+            "unaligned current stack",
+            burrow::arch::aarch64::preflight_activation(
+                k_feature_40_bit, fixture.plan, fixture.storage,
+                fixture.configuration, invalid_stack),
+            activation_preflight_error_t::invalid_runtime_state);
+
+        activation_preflight_t missing_current_pc{ make_preflight() };
+        missing_current_pc.current_program_counter.value = k_image_physical;
+        passed &= expect_preflight_error(
+            "current PC is not executable",
+            burrow::arch::aarch64::preflight_activation(
+                k_feature_40_bit, fixture.plan, fixture.storage,
+                fixture.configuration, missing_current_pc),
+            activation_preflight_error_t::missing_current_program_counter);
+
+        activation_preflight_t missing_current_stack{ make_preflight() };
+        missing_current_stack.current_stack_pointer.value =
+            k_bootstrap_stack_physical;
+        passed &= expect_preflight_error(
+            "current stack is not writable",
+            burrow::arch::aarch64::preflight_activation(
+                k_feature_40_bit, fixture.plan, fixture.storage,
+                fixture.configuration, missing_current_stack),
+            activation_preflight_error_t::missing_current_stack);
+
+        activation_preflight_t missing_target{ make_preflight() };
+        missing_target.target_program_counter_virtual_address.value =
+            burrow::core::k_kernel_virtual_bias;
+        passed &= expect_preflight_error(
+            "higher continuation is not executable",
+            burrow::arch::aarch64::preflight_activation(
+                k_feature_40_bit, fixture.plan, fixture.storage,
+                fixture.configuration, missing_target),
+            activation_preflight_error_t::missing_target_program_counter);
+
+        activation_preflight_t wrong_vector{ make_preflight() };
+        wrong_vector.stable_vectors_virtual_address.value += 0x800;
+        passed &= expect_preflight_error(
+            "stable vectors map the wrong physical page",
+            burrow::arch::aarch64::preflight_activation(
+                k_feature_40_bit, fixture.plan, fixture.storage,
+                fixture.configuration, wrong_vector),
+            activation_preflight_error_t::missing_stable_vectors);
+
+        activation_preflight_t wrong_boot_alias{ make_preflight() };
+        wrong_boot_alias.boot_information_virtual_address.value += 4096;
+        passed &= expect_preflight_error(
+            "boot-information alias must be exact",
+            burrow::arch::aarch64::preflight_activation(
+                k_feature_40_bit, fixture.plan, fixture.storage,
+                fixture.configuration, wrong_boot_alias),
+            activation_preflight_error_t::invalid_runtime_state);
+
+        fixture_t corrupt{};
+        initialize(corrupt);
+        if (!build(corrupt)) return false;
+        uint64_t* target{ leaf_entry(
+            corrupt, burrow::core::k_kernel_virtual_bias + 0x1000) };
+        if (target == nullptr) return false;
+        *target |= UINT64_C(1) << 53;
+        passed &= expect_preflight_error(
+            "preflight rejects unaudited tables",
+            burrow::arch::aarch64::preflight_activation(
+                k_feature_40_bit, corrupt.plan, corrupt.storage,
+                corrupt.configuration, make_preflight()),
+            activation_preflight_error_t::invalid_tables);
+        return passed;
+    }
 }
 
 int main()
@@ -519,6 +631,7 @@ int main()
     passed &= run_feature_and_boundary_tests();
     passed &= run_invalid_plan_tests();
     passed &= run_audit_corruption_tests();
+    passed &= run_activation_preflight_tests();
     if (!passed) return 1;
 
     std::puts("Warren AArch64 page-table tests passed.");

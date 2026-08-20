@@ -119,9 +119,11 @@ IMAGE_LIMIT = 0x80000000
 MAXIMUM_U64 = 0xFFFFFFFFFFFFFFFF
 ENTRY_SYMBOL = "burrow_aarch64_entry"
 EMERGENCY_VECTOR_SYMBOL = "burrow_aarch64_emergency_vectors"
+STABLE_VECTOR_SYMBOL = "burrow_aarch64_stable_vectors"
 EMERGENCY_REPORTER_SYMBOL = "burrow_aarch64_emergency_exception"
 NORMALIZATION_SYMBOL = "burrow_aarch64_normalize"
 COMMON_EL1_SYMBOL = "burrow_aarch64_common_el1"
+ACTIVATION_SYMBOL = "burrow_aarch64_activate_translation"
 QEMU_SEMIHOST_HLT = bytes.fromhex("00005ed4")
 QEMU_PASS_MARKER = b"WARREN_TEST:1:PASS:burrow-first-entry\r\n\0"
 QEMU_FAILURE_MARKER_TEMPLATE = b"WARREN_TEST:1:FAIL:burrow-first-entry:00\r\n\0"
@@ -1436,6 +1438,68 @@ def verify_emergency_vectors_disassembly(
                 f"emergency vector {vector} does not branch to the terminal reporter"
             )
 
+    stable_result = subprocess.run(
+        [
+            str(objdump),
+            f"--disassemble-symbols={STABLE_VECTOR_SYMBOL}",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if stable_result.returncode != 0:
+        raise VerificationError("could not disassemble the stable vectors")
+    stable_match = re.search(
+        rf"^([0-9a-fA-F]+) <{STABLE_VECTOR_SYMBOL}>:$",
+        stable_result.stdout,
+        re.MULTILINE,
+    )
+    if stable_match is None:
+        raise VerificationError("stable vector symbol address is missing")
+    stable_base = int(stable_match.group(1), 16)
+    if stable_base % 2048 != 0:
+        raise VerificationError("stable vector disassembly is not aligned")
+    if stable_base == base:
+        raise VerificationError("stable vectors alias the inherited emergency table")
+    stable_table_result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble",
+            f"--start-address={stable_base:#x}",
+            f"--stop-address={stable_base + 2048:#x}",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    stable_instructions: dict[int, str] = {}
+    for line in stable_table_result.stdout.splitlines():
+        stripped = line.strip()
+        match = re.match(r"^([0-9a-fA-F]+):", stripped)
+        if match is None:
+            continue
+        instruction = stripped.split(":", 1)[1].split("//", 1)[0].strip()
+        stable_instructions[int(match.group(1), 16)] = re.sub(
+            r"\s+", " ", instruction
+        )
+    for vector in range(16):
+        address = stable_base + vector * 128
+        if stable_instructions.get(address) != f"mov x17, #0x{vector:x}":
+            raise VerificationError(
+                f"stable vector {vector} does not begin with its classification"
+            )
+        branch = stable_instructions.get(address + 4, "")
+        if not branch.startswith("b ") or "burrow_aarch64_emergency_exception" not in branch:
+            raise VerificationError(
+                f"stable vector {vector} does not branch to the terminal reporter"
+            )
+
     reporter_result = subprocess.run(
         [
             str(objdump),
@@ -1656,6 +1720,7 @@ def verify_normalization_disassembly(
             "str x1, [x0]",
             "mrs x0, ID_AA64MMFR0_EL1",
             "burrow_aarch64_build_transition_tables",
+            ACTIVATION_SYMBOL,
             "mov w0, #0x4c",
             "msr DAIFSet, #0xf",
             "wfe",
@@ -1676,9 +1741,9 @@ def verify_normalization_disassembly(
         instruction for _, instruction in addressed_instructions
         if instruction.startswith("b ") and "burrow_qemu_test_failure" in instruction
     ]
-    expected_transport_count = 1 if qemu_test_result is not None else 0
-    if len(result_branches) != expected_transport_count:
+    if result_branches:
         raise VerificationError("normalization has an unexpected QEMU result branch")
+    expected_transport_count = 1 if qemu_test_result is not None else 0
     if len(failure_branches) != expected_transport_count:
         raise VerificationError("normalization has an unexpected QEMU failure branch")
 
@@ -1690,7 +1755,7 @@ def verify_table_preparation_disassembly(
     result = subprocess.run(
         [
             str(objdump),
-            "--disassemble-symbols=burrow_aarch64_build_transition_tables",
+            "--disassemble-symbols=burrow_aarch64_build_transition_tables,burrow_aarch64_preflight_activation",
             "--demangle",
             "--no-show-raw-insn",
             str(image),
@@ -1707,14 +1772,124 @@ def verify_table_preparation_disassembly(
     for fragment in (
         "burrow::arch::aarch64::build_page_tables",
         "burrow::arch::aarch64::audit_page_tables",
+        "burrow::arch::aarch64::preflight_activation",
     ):
         if fragment not in output:
             raise VerificationError(f"table preparation is missing {fragment}")
-    for value, name in (("4b", "architecture"), ("4e", "table")):
+    for value, name in (("4b", "architecture"), ("4e", "table"), ("4f", "activation")):
         if re.search(rf"\bmov\s+w[0-9]+,\s*#0x{value}\b", result.stdout) is None:
             raise VerificationError(
                 f"table preparation is missing the {name} failure code"
             )
+
+
+def verify_activation_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+    *,
+    qemu_test_result: str | None,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            f"--disassemble-symbols={ACTIVATION_SYMBOL}",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble AArch64 activation")
+
+    instructions: list[str] = []
+    for line in result.stdout.splitlines():
+        if not re.match(r"^[0-9a-fA-F]+:", line.strip()):
+            continue
+        instruction = line.split(":", 1)[1].split("//", 1)[0].strip()
+        instructions.append(re.sub(r"\s+", " ", instruction))
+    if not instructions:
+        raise VerificationError("AArch64 activation disassembly is empty")
+
+    cursor = 0
+    for fragment in (
+        "burrow_aarch64_preflight_activation",
+        "dsb sy",
+        "msr MAIR_EL1, x9",
+        "msr TCR_EL1, x10",
+        "msr TTBR0_EL1, x11",
+        "msr TTBR1_EL1, x12",
+        "isb",
+        "tlbi vmalle1",
+        "dsb ish",
+        "isb",
+        "msr SCTLR_EL1, x13",
+        "isb",
+        "br x26",
+        "msr VBAR_EL1, x27",
+        "isb",
+        "mov sp, x16",
+        "dsb ishst",
+        "msr TTBR0_EL1, x17",
+        "isb",
+        "tlbi vmalle1is",
+        "dsb ish",
+        "isb",
+        "mrs x0, CurrentEL",
+        "mrs x0, TTBR0_EL1",
+        "mrs x0, TTBR1_EL1",
+        "mrs x0, VBAR_EL1",
+        "mrs x0, TCR_EL1",
+        "mrs x0, MAIR_EL1",
+        "mrs x0, SCTLR_EL1",
+        "mov x1, #0x8",
+        "str x1, [x0]",
+    ):
+        while cursor < len(instructions) and fragment not in instructions[cursor]:
+            cursor += 1
+        if cursor == len(instructions):
+            raise VerificationError(
+                f"AArch64 activation is missing ordered instruction {fragment}"
+            )
+        cursor += 1
+
+    result_branches = [
+        instruction for instruction in instructions
+        if instruction.startswith("b ") and "burrow_qemu_test_result" in instruction
+    ]
+    low_failure_branches = [
+        instruction for instruction in instructions
+        if instruction.startswith("b ") and
+        "burrow_qemu_test_failure>" in instruction
+    ]
+    stable_failure_branches = [
+        instruction for instruction in instructions
+        if instruction.startswith("b ") and
+        "burrow_qemu_test_failure_stable" in instruction
+    ]
+    expected = 1 if qemu_test_result is not None else 0
+    if len(result_branches) != expected or len(low_failure_branches) != expected or \
+            len(stable_failure_branches) != expected:
+        raise VerificationError("activation has an unexpected QEMU transport branch")
+
+    boundary_begin = next(
+        index for index, instruction in enumerate(instructions)
+        if instruction == "dsb sy"
+    )
+    boundary_end = next(
+        index for index in range(boundary_begin, len(instructions))
+        if instructions[index] == "br x26"
+    )
+    forbidden_boundary_instructions = [
+        instruction for instruction in instructions[boundary_begin:boundary_end + 1]
+        if instruction.startswith(("bl ", "ret")) or "sp" in instruction
+    ]
+    if forbidden_boundary_instructions:
+        raise VerificationError(
+            "activation register boundary uses a call, return, or stack reference"
+        )
 
 
 def verify_qemu_result_disassembly(
@@ -1778,7 +1953,7 @@ def verify_qemu_result_disassembly(
     failure_result = subprocess.run(
         [
             str(objdump),
-            "--disassemble-symbols=burrow_qemu_test_failure",
+            "--disassemble-symbols=burrow_qemu_test_failure,burrow_qemu_test_failure_stable",
             "--no-show-raw-insn",
             str(image),
         ],
@@ -1910,6 +2085,11 @@ def main() -> int:
         verify_table_preparation_disassembly(
             arguments.objdump,
             arguments.image,
+        )
+        verify_activation_disassembly(
+            arguments.objdump,
+            arguments.image,
+            qemu_test_result=arguments.qemu_test_result,
         )
         verify_qemu_result_disassembly(
             arguments.objdump,
