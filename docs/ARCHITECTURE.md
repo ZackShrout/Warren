@@ -1,16 +1,17 @@
 # Warren Architecture
 
-**Status:** Phase 0 contracts accepted; Phase 1 image loading implemented
+**Status:** Phase 0 contracts accepted; Phase 1 first entry implemented
 
 **Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
 
 **Future target:** x86-64, selected only after the shared boundaries are proven
 
 This document describes the direction in which Warren begins. The UEFI
-bootloader now loads—but does not enter—the audited Burrow ELF image. Canonical
-boot-information declarations and validators and host-side contract tests also
-exist. Stable decisions are recorded in `docs/adr/`, and exact subordinate
-formats live in `docs/specifications/`.
+bootloader now loads and enters the audited Burrow ELF image through the
+accepted physical handoff. Burrow's assembly witness stops before execution
+normalization or architecture-neutral kernel entry. Stable decisions are
+recorded in `docs/adr/`, and exact subordinate formats live in
+`docs/specifications/`.
 
 ## Architectural Shape
 
@@ -47,7 +48,7 @@ Initial machine assumptions:
 | Concern | Initial choice |
 | --- | --- |
 | CPU architecture | AArch64 / ARMv8.0-A, Cortex-A57 reference CPU |
-| Privilege | Loader may hand off at EL1 or EL2; Burrow normalizes to EL1 |
+| Privilege | Loader may hand off at EL1 or EL2; a later stage normalizes to EL1 |
 | CPU count | One |
 | Memory | 512 MiB reference configuration |
 | Base page size | 4 KiB |
@@ -99,9 +100,18 @@ removable-media path `EFI/BOOT/BOOTAA64.EFI` in a deterministic FAT32 image. It
 contains no Burrow payload and is a structural and reproducibility surface, not
 a successful system boot. The combined system image additionally packages
 Burrow at `EFI/WARREN/BURROW.ELF`. Only that combined image owns the current
-`burrow-loader` QEMU result. The host parses the accepted record grammar, but
-firmware shutdown remains a compatibility transport rather than Burrow's later
-PL011 plus semihosting result transport.
+`burrow-first-entry` QEMU result. Burrow emits the terminal serial record and
+uses the test-only semihosting exit; the host requires both channels to agree.
+Dedicated pass, explicit-failure, and panic Burrow children prove the transport
+without adding it to the ordinary kernel image. Separate UEFI fault fixtures
+prove Burrow rejects finalized header and console corruption and prove the
+loader's post-exit failure containment without entering Burrow.
+
+Loader diagnostics use the UEFI console only before the final memory-map
+transaction. After successful exit, the loader and Burrow witness use bounded
+direct PL011 writes under firmware's inherited identity mapping. This is not a
+reusable kernel console. The test-only semihosting path is absent from ordinary
+Burrow and UEFI products and is not a physical-machine interface.
 
 Burrow is built as a static position-independent ELF64 `ET_DYN` image with
 separate read-only, executable, and writable load pages. The current minimal
@@ -116,9 +126,14 @@ fixed Warren path. An EFI-neutral bounded-byte reader validates the ELF64
 program headers, load classes, dynamic table, and optional relative-relocation
 table. Firmware chooses one contiguous page extent; the shared materializer
 zeroes it, copies the three loads, applies `R_AARCH64_RELATIVE`, and reports the
-physical extent, load bias, and relocated entry. It does not construct boot
-information, obtain the final memory map, call `ExitBootServices()`, install
-final permissions, or transfer control.
+physical extent, load bias, and relocated entry. The loader then allocates the
+bootstrap stack and handoff storage, normalizes the final UEFI memory map,
+constructs and validates boot information, exits boot services with bounded
+stale-key retry, synchronizes executable bytes, and transfers with the accepted
+AArch64 register and stack state. Burrow's first-entry assembly checks the fixed
+header prefix and PL011 record, records the observed EL and handoff state, and
+stops without installing vectors, changing translation state, or calling
+architecture-neutral C++.
 
 ## Source Layout
 
@@ -156,8 +171,8 @@ docs/
 
 Directories appear only when their first owned artifact exists. The initial
 `kernel/src/Core`, `kernel/src/Arch/AArch64`, and `kernel/linker/AArch64`
-directories now contain the image layout sentinels, nonfunctional architecture
-entry, and audited linker script; later directories remain planned.
+directories now contain the image layout sentinels, reviewed first-entry
+witness, and audited linker script; later directories remain planned.
 
 ## Portability Layers
 

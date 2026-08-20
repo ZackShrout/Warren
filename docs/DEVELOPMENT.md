@@ -80,7 +80,7 @@ only the 28 individually hashed files on the checked-in allowlist. QEMU's UEFI
 code and variable-store images are also verified against a checked-in integrity
 manifest before any build paths are generated.
 
-## Current Burrow Loader Slice
+## Current Burrow First-Entry Slice
 
 The stable combined developer commands are:
 
@@ -103,12 +103,28 @@ environment.
 CTest extracts the bootloader and runtime ELF from the combined ESP and compares
 their bytes to the selected inputs, proves complete ESP reproducibility,
 materializes the generated runtime ELF through the production C++ loader on the
-host, and runs the combined `burrow-loader` QEMU test. The firmware result proves
-fixed-path file access, loader validation, allocation, copying, zero-fill, and
-relocation before clean shutdown. It does not mean Burrow executed, boot
-services ended, or boot information exists. The host profile also exercises
-independent malformed loader fixtures, the artifact verifier, ESP input
-failures, the boot-information ABI, the serial classifier, and toolchain gates.
+host, and runs the combined `burrow-first-entry` QEMU test. That gate requires
+the post-exit loader diagnostic, Burrow's first-entry witness, and agreement
+between Burrow's terminal PL011 record and QEMU semihosting status. The host
+profile also exercises independent malformed loader fixtures, handoff storage
+and finalization, the artifact verifier, ESP input failures, the
+boot-information ABI, the serial classifier, and toolchain gates.
+
+The combined system build explicitly enables the test-only QEMU transport in
+its Burrow child. Focused `aarch64-debug` and `aarch64-release` products leave
+that option off, and their artifact verification rejects the semihosting trap,
+terminal markers, and argument blocks. The system build also composes dedicated
+failure and panic ESP fixtures. `WarrenSystemQemuResultFailure` requires an
+agreed `FAIL`/64 result, while `WarrenSystemQemuResultPanic` requires an agreed
+`PANIC`/2 result through the same QEMU harness used by the successful boot.
+`WarrenSystemBurrowRejectsInvalidHeader` corrupts the finalized magic after
+firmware exit and requires `FAIL`/68 with no Burrow success diagnostic.
+`WarrenSystemBurrowRejectsInvalidConsole` clears the finalized console output
+flag and requires `FAIL`/72, proving that the QEMU failure reporter does not
+trust the rejected record.
+`WarrenSystemPostExitFailureContainment` enters the loader's nonreturning
+post-exit failure routine and requires its direct diagnostic plus `FAIL`/73,
+again without entering Burrow.
 
 Focused profiles remain supported:
 
@@ -250,8 +266,9 @@ Target-only behavior runs in QEMU. A test boot has:
 
 The exact ASCII grammar, guest codes, host statuses, ordering, and disagreement
 precedence are fixed in `specifications/TEST_RESULT_PROTOCOL_V1.md`. The current
-combined loader proof uses that serial grammar with firmware shutdown but does
-not claim the later two-channel Burrow result contract.
+combined proof uses the two-channel `burrow-first-entry` contract after UEFI
+boot services have ended. It proves Burrow assembly execution, not the later
+normalized kernel entry or an ordinary shutdown facility.
 
 ### Interactive tests
 

@@ -13,9 +13,10 @@ and LLD, the independent Warren-owned artifact verifier, the production C++
 reader and materializer, the distinction between symbol and runtime copies, and
 the image's location in the combined EFI System Partition.
 
-It does not specify boot information, the final firmware memory map,
-`ExitBootServices()`, instruction-cache synchronization for entry, or transfer
-of control. The current bootloader loads but does not execute the image.
+The image format remains independent of boot-information production, the final
+firmware memory map, `ExitBootServices()`, and loader-side cache synchronization.
+This specification does record the build isolation required by the current
+first-entry witness and its QEMU-only result transport.
 
 ## 2. ELF Identity
 
@@ -42,9 +43,11 @@ runtime library, or unresolved target symbol.
 
 The entry is the C-compatible architecture symbol
 `burrow_aarch64_entry`. LLD localizes its hidden definition in the final symbol
-table; it remains a four-byte `STT_FUNC` at the ELF entry. The current emitted
-entry address is `0x1000`. This branch deliberately implements the body as
-`brk #0`, and no passing test claims that the instruction executed.
+table; it remains a nonempty `STT_FUNC` at ELF entry address `0x1000`. Its
+AArch64 assembly body records the incoming handoff state, checks the fixed
+boot-information prefix, stack/register state, DAIF masks, current EL, and
+bounded PL011 descriptor, and then enters a masked wait. It imports no runtime
+and does not call architecture-neutral C++.
 
 ## 3. Load Image
 
@@ -68,15 +71,15 @@ ELF and complete program-header table. Every loadable byte and the entry are
 below `0x80000000`. The loader may therefore compute every physical address by
 adding one chosen load bias to an ELF-relative virtual address.
 
-The current debug and release images share this loaded shape:
+The current ordinary debug and release images share this loaded shape:
 
 | Header | Offset | Virtual address | File size | Memory size | Flags |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `PT_LOAD` | `0x0000` | `0x0000` | `0x01E0` | `0x01E0` | R |
-| `PT_LOAD` | `0x1000` | `0x1000` | `0x0018` | `0x0018` | RX |
-| `PT_LOAD` | `0x2000` | `0x2000` | `0x0068` | `0x00B0` | RW |
-| `PT_DYNAMIC` | `0x2008` | `0x2008` | `0x0060` | `0x0060` | RW |
-| `PT_GNU_RELRO` | `0x2008` | `0x2008` | `0x0060` | `0x0060` | R |
+| `PT_LOAD` | `0x0000` | `0x0000` | `0x01FF` | `0x01FF` | R |
+| `PT_LOAD` | `0x1000` | `0x1000` | `0x02F0` | `0x02F0` | RX |
+| `PT_LOAD` | `0x2000` | `0x2000` | `0x0088` | `0x00D0` | RW |
+| `PT_DYNAMIC` | `0x2028` | `0x2028` | `0x0060` | `0x0060` | RW |
+| `PT_GNU_RELRO` | `0x2028` | `0x2028` | `0x0060` | `0x0060` | R |
 | `PT_GNU_STACK` | `0x0000` | `0x0000` | `0` | `0` | RW, non-executable |
 
 The exact current sizes are evidence for the minimal image, not reserved ABI
@@ -95,8 +98,8 @@ The runtime copy currently retains these sections:
 | `.rodata` | `SHT_PROGBITS`, A | R | `0x01D0` |
 | `.text` | `SHT_PROGBITS`, AX | RX | `0x1000` |
 | `.data` | `SHT_PROGBITS`, WA | RW | `0x2000` |
-| `.dynamic` | `SHT_DYNAMIC`, WA | RW | `0x2008` |
-| `.bss` | `SHT_NOBITS`, WA | RW | `0x2070` |
+| `.dynamic` | `SHT_DYNAMIC`, WA | RW | `0x2028` |
+| `.bss` | `SHT_NOBITS`, WA | RW | `0x2090` |
 | `.symtab`, `.strtab`, `.shstrtab` | Symbol/strings | Not loaded | no runtime address |
 
 Allocated sections are wholly contained by a compatible load class. A
@@ -284,9 +287,30 @@ the selected inputs, build the combined image twice and require identical
 SHA-256 bytes, exercise the generated ELF through production C++, and boot the
 same ESP through UEFI.
 
-The combined QEMU path emits `BEGIN:burrow-loader`, one bounded diagnostic with
-the live physical start, size, load bias, and relocated entry, and then
-`PASS:burrow-loader` before `ResetSystem()`. This proves firmware file I/O and
-allocation reached a validated loaded-image state. It is not evidence that
-Burrow executed, boot services ended, boot information was constructed, final
-segment permissions were installed, or the handoff contract was established.
+The combined QEMU path emits `BEGIN:burrow-first-entry`, the live loaded-image
+diagnostic, a direct post-`ExitBootServices()` loader line, Burrow's observed EL
+and boot-information address, and `PASS:burrow-first-entry`. Burrow then uses
+the exact test-only `SYS_EXIT_EXTENDED` operation with status zero. The host
+requires serial/process agreement.
+
+`WARREN_ENABLE_QEMU_TEST_RESULT` defaults off and is enabled only by combined
+system-test orchestration. Its private `WARREN_QEMU_TEST_RESULT_MODE` selection
+is one of `pass`, `fail`, or `panic`; each mode chooses one exact terminal line
+and matching status block. The transport object lives under
+`kernel/src/Platform/QemuVirt` and is not compiled into ordinary Burrow.
+The same test object owns a bounded dynamic failure entry for witness codes
+65–72. That entry accepts only the allocated range, uses the QEMU-virt PL011
+base rather than trusting a rejected console record, emits the matching decimal
+code, and updates the shared semihosting argument block before the one common
+trap.
+
+Focused debug and release artifacts must contain no semihosting HLT, terminal
+test marker, exit argument block, or branch from first entry into the transport.
+The byte-level and disassembly artifact verifier enforces absence in ordinary
+products and the exact selected shape in every system-test child.
+The system matrix also packages a UEFI fault image that corrupts the finalized
+boot-information magic only after successful firmware exit. Its live QEMU test
+requires `FAIL`/68 and forbids the normal Burrow first-entry diagnostic, proving
+that consumer validation is independent of the loader's earlier validation. A
+second image clears the finalized console output flag and requires `FAIL`/72,
+proving that the fixed QEMU reporter does not use the rejected record.

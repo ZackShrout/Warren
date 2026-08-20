@@ -74,11 +74,14 @@ add_custom_target(WarrenPlanning SOURCES
     docs/adr/0015-boot-information-v1-layout.md
     docs/adr/0016-initial-aarch64-virtual-memory-layout.md
     docs/specifications/AARCH64_BURROW_IMAGE.md
+    docs/specifications/AARCH64_LOADER_HANDOFF.md
     docs/specifications/BOOT_INFORMATION_V1.md
     docs/specifications/TEST_RESULT_PROTOCOL_V1.md
+    boot/Platform/QemuVirt/PostExitTestResult.s
     kernel/linker/AArch64/burrow.ld
     kernel/src/Arch/AArch64/Entry.s
     kernel/src/Core/ImageLayout.cpp
+    kernel/src/Platform/QemuVirt/TestResult.S
     third_party/README.md
     third_party/edk2/LICENSE
     third_party/edk2/README.md
@@ -108,11 +111,18 @@ endif()
 
 if(NOT WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     add_library(WarrenBurrowLoader OBJECT
+        boot/include/warren/boot/AArch64Handoff.h
+        boot/include/warren/boot/BootHandoffFinalization.h
+        boot/include/warren/boot/BootHandoffStorage.h
         boot/include/warren/boot/BurrowLoader.h
+        boot/Loader/AArch64Handoff.cpp
+        boot/Loader/BootHandoffFinalization.cpp
+        boot/Loader/BootHandoffStorage.cpp
         boot/Loader/BurrowLoader.cpp
     )
     target_include_directories(WarrenBurrowLoader PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/boot/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
     )
     target_compile_options(WarrenBurrowLoader PRIVATE
         -ffreestanding
@@ -131,7 +141,9 @@ endif()
 
 add_library(WarrenBootProtocol OBJECT
     sdk/include/warren/boot/BootInformation.h
+    sdk/include/warren/boot/BootInformationProducer.h
     sdk/include/warren/boot/BootInformationValidation.h
+    sdk/src/boot/BootInformationProducer.cpp
     sdk/src/boot/BootInformationValidation.cpp
 )
 target_include_directories(WarrenBootProtocol PUBLIC
@@ -190,11 +202,30 @@ if(NOT CMAKE_CROSSCOMPILING)
         COMMAND WarrenBootInformationTests
     )
 
+    add_executable(WarrenBootInformationProducerTests
+        tests/host/BootInformationProducerTests.cpp
+    )
+    target_link_libraries(WarrenBootInformationProducerTests PRIVATE
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenBootInformationProducerTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenBootInformationProducer
+        COMMAND WarrenBootInformationProducerTests
+    )
+
     add_executable(WarrenBurrowLoaderTests
         tests/host/BurrowLoaderTests.cpp
     )
     target_link_libraries(WarrenBurrowLoaderTests PRIVATE
         WarrenBurrowLoader
+        WarrenBootProtocol
     )
     target_compile_options(WarrenBurrowLoaderTests PRIVATE
         -Wall
@@ -206,6 +237,63 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenBurrowLoader
         COMMAND WarrenBurrowLoaderTests
+    )
+
+    add_executable(WarrenBootHandoffStorageTests
+        tests/host/BootHandoffStorageTests.cpp
+    )
+    target_link_libraries(WarrenBootHandoffStorageTests PRIVATE
+        WarrenBurrowLoader
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenBootHandoffStorageTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenBootHandoffStorage
+        COMMAND WarrenBootHandoffStorageTests
+    )
+
+    add_executable(WarrenBootHandoffFinalizationTests
+        tests/host/BootHandoffFinalizationTests.cpp
+    )
+    target_link_libraries(WarrenBootHandoffFinalizationTests PRIVATE
+        WarrenBurrowLoader
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenBootHandoffFinalizationTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenBootHandoffFinalization
+        COMMAND WarrenBootHandoffFinalizationTests
+    )
+
+    add_executable(WarrenAArch64HandoffTests
+        tests/host/AArch64HandoffTests.cpp
+    )
+    target_link_libraries(WarrenAArch64HandoffTests PRIVATE
+        WarrenBurrowLoader
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenAArch64HandoffTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenAArch64Handoff
+        COMMAND WarrenAArch64HandoffTests
     )
 
     add_test(
@@ -276,9 +364,42 @@ if(NOT CMAKE_CROSSCOMPILING)
 endif()
 
 if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
+    option(WARREN_ENABLE_QEMU_TEST_RESULT
+        "Enable Burrow's QEMU-only first-entry result transport"
+        OFF
+    )
+    set(WARREN_QEMU_TEST_RESULT_MODE "pass" CACHE STRING
+        "Terminal result emitted by a QEMU test-enabled Burrow image"
+    )
+    set_property(CACHE WARREN_QEMU_TEST_RESULT_MODE PROPERTY STRINGS
+        pass fail panic
+    )
+
+    if(WARREN_ENABLE_QEMU_TEST_RESULT AND
+       NOT WARREN_QEMU_TEST_RESULT_MODE MATCHES "^(pass|fail|panic)$")
+        message(FATAL_ERROR
+            "WARREN_QEMU_TEST_RESULT_MODE must be pass, fail, or panic"
+        )
+    endif()
+
     add_library(BurrowImageObjects OBJECT
         kernel/src/Arch/AArch64/Entry.s
         kernel/src/Core/ImageLayout.cpp
+    )
+    if(WARREN_ENABLE_QEMU_TEST_RESULT)
+        target_sources(BurrowImageObjects PRIVATE
+            kernel/src/Platform/QemuVirt/TestResult.S
+        )
+        string(TOUPPER "${WARREN_QEMU_TEST_RESULT_MODE}" _burrow_result_mode_upper)
+        set(_burrow_verifier_result_arguments
+            --qemu-test-result "${WARREN_QEMU_TEST_RESULT_MODE}"
+        )
+    else()
+        set(_burrow_result_mode_upper "PASS")
+        set(_burrow_verifier_result_arguments)
+    endif()
+    set_source_files_properties(kernel/src/Arch/AArch64/Entry.s PROPERTIES
+        COMPILE_OPTIONS "-x;assembler-with-cpp"
     )
     target_compile_options(BurrowImageObjects PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:-ffreestanding>
@@ -309,6 +430,8 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     )
     target_compile_definitions(BurrowImageObjects PRIVATE
         $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:NDEBUG>
+        $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>>:WARREN_ENABLE_QEMU_TEST_RESULT=1>
+        $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>>:WARREN_QEMU_TEST_RESULT_${_burrow_result_mode_upper}=1>
     )
 
     set(_burrow_artifact_directory "${CMAKE_CURRENT_BINARY_DIR}/artifacts")
@@ -347,6 +470,8 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             $<TARGET_OBJECTS:BurrowImageObjects>
         COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
+            --objdump "${CMAKE_OBJDUMP}"
+            ${_burrow_verifier_result_arguments}
             --image "${_burrow_symbol_image}"
         COMMAND "${CMAKE_OBJCOPY}"
             --strip-debug
@@ -354,6 +479,8 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             "${_burrow_runtime_image}"
         COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
+            --objdump "${CMAKE_OBJDUMP}"
+            ${_burrow_verifier_result_arguments}
             --runtime
             --image "${_burrow_runtime_image}"
             --reference-image "${_burrow_symbol_image}"
@@ -388,13 +515,42 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     unset(_burrow_symbol_image)
     unset(_burrow_runtime_image)
     unset(_burrow_map)
+    unset(_burrow_result_mode_upper)
+    unset(_burrow_verifier_result_arguments)
 endif()
 
 if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
+    set(WARREN_QEMU_HANDOFF_FAULT "none" CACHE STRING
+        "Trusted QEMU-only UEFI handoff fault fixture"
+    )
+    set_property(CACHE WARREN_QEMU_HANDOFF_FAULT PROPERTY STRINGS
+        none boot-magic console-record post-exit
+    )
+    if(NOT WARREN_QEMU_HANDOFF_FAULT MATCHES "^(none|boot-magic|console-record|post-exit)$")
+        message(FATAL_ERROR
+            "WARREN_QEMU_HANDOFF_FAULT must be none, boot-magic, console-record, or post-exit"
+        )
+    endif()
+
+    add_library(WarrenAArch64HandoffAssembly OBJECT
+        boot/Arch/AArch64/Handoff.s
+    )
+    target_compile_options(WarrenAArch64HandoffAssembly PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
     add_library(WarrenUefiBootloaderObject OBJECT
+        boot/Arch/AArch64/Handoff.cpp
         boot/uefi/Main.cpp
         boot/uefi/Memory.cpp
+        boot/uefi/UefiHandoffFinalization.cpp
+        boot/uefi/UefiHandoffStorage.cpp
         boot/uefi/UefiFile.cpp
+        boot/include/warren/boot/UefiHandoffFinalization.h
+        boot/include/warren/boot/UefiHandoffStorage.h
         boot/include/warren/boot/Uefi.h
         boot/include/warren/boot/UefiFile.h
     )
@@ -402,6 +558,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
     target_include_directories(WarrenUefiBootloaderObject
         PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/boot/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
     )
     target_compile_options(WarrenUefiBootloaderObject PRIVATE
         "SHELL:-isystem ${WARREN_EDK2_INCLUDE}"
@@ -426,6 +583,42 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
         $<$<CONFIG:Release>:NDEBUG>
     )
 
+    set(_warren_qemu_post_exit_result_objects)
+    set(_warren_qemu_post_exit_result_targets)
+    set(_warren_uefi_verifier_test_arguments)
+    if(WARREN_QEMU_HANDOFF_FAULT STREQUAL "boot-magic")
+        target_compile_definitions(WarrenUefiBootloaderObject PRIVATE
+            WARREN_QEMU_HANDOFF_FAULT_BOOT_MAGIC=1
+        )
+    elseif(WARREN_QEMU_HANDOFF_FAULT STREQUAL "console-record")
+        target_compile_definitions(WarrenUefiBootloaderObject PRIVATE
+            WARREN_QEMU_HANDOFF_FAULT_CONSOLE_RECORD=1
+        )
+    elseif(WARREN_QEMU_HANDOFF_FAULT STREQUAL "post-exit")
+        target_compile_definitions(WarrenUefiBootloaderObject PRIVATE
+            WARREN_QEMU_HANDOFF_FAULT_POST_EXIT=1
+            WARREN_ENABLE_QEMU_POST_EXIT_FAILURE_RESULT=1
+        )
+        add_library(WarrenQemuPostExitResultAssembly OBJECT
+            boot/Platform/QemuVirt/PostExitTestResult.s
+        )
+        target_compile_options(WarrenQemuPostExitResultAssembly PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Werror
+        )
+        list(APPEND _warren_qemu_post_exit_result_objects
+            $<TARGET_OBJECTS:WarrenQemuPostExitResultAssembly>
+        )
+        list(APPEND _warren_qemu_post_exit_result_targets
+            WarrenQemuPostExitResultAssembly
+        )
+        set(_warren_uefi_verifier_test_arguments
+            --qemu-post-exit-failure-result
+        )
+    endif()
+
     set(_warren_artifact_directory "${CMAKE_CURRENT_BINARY_DIR}/artifacts")
     set(_warren_uefi_image "${_warren_artifact_directory}/BOOTAA64.EFI")
     set(_warren_esp_image "${_warren_artifact_directory}/warren-esp.img")
@@ -439,19 +632,34 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
             /entry:efi_main
             /nodefaultlib
             /Brepro
+            /include:warren_aarch64_synchronize_instruction_range
+            /include:warren_aarch64_handoff
+            /include:warren_aarch64_post_exit_failure
             $<$<CONFIG:Debug>:/debug:dwarf>
             "/out:${_warren_uefi_image}"
+            $<TARGET_OBJECTS:WarrenAArch64HandoffAssembly>
             $<TARGET_OBJECTS:WarrenBurrowLoader>
+            $<TARGET_OBJECTS:WarrenBootProtocol>
             $<TARGET_OBJECTS:WarrenUefiBootloaderObject>
+            ${_warren_qemu_post_exit_result_objects}
         COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_uefi_image.py"
             --readobj "${WARREN_LLVM_READOBJ}"
+            --objdump "${WARREN_LLVM_OBJDUMP}"
+            --handoff-object $<TARGET_OBJECTS:WarrenAArch64HandoffAssembly>
+            ${_warren_uefi_verifier_test_arguments}
             --image "${_warren_uefi_image}"
         DEPENDS
+            WarrenAArch64HandoffAssembly
             WarrenUefiBootloaderObject
             WarrenBurrowLoader
+            WarrenBootProtocol
+            $<TARGET_OBJECTS:WarrenAArch64HandoffAssembly>
             $<TARGET_OBJECTS:WarrenBurrowLoader>
+            $<TARGET_OBJECTS:WarrenBootProtocol>
             $<TARGET_OBJECTS:WarrenUefiBootloaderObject>
+            ${_warren_qemu_post_exit_result_targets}
+            ${_warren_qemu_post_exit_result_objects}
             tools/verify_uefi_image.py
         COMMAND_EXPAND_LISTS
         VERBATIM
@@ -486,5 +694,9 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "uefi")
             --bootloader "${_warren_uefi_image}"
     )
     set_tests_properties(WarrenEspReproducibility PROPERTIES TIMEOUT 20)
+
+    unset(_warren_qemu_post_exit_result_objects)
+    unset(_warren_qemu_post_exit_result_targets)
+    unset(_warren_uefi_verifier_test_arguments)
 
 endif()

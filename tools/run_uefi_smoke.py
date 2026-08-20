@@ -21,7 +21,19 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--firmware-vars", required=True, type=pathlib.Path)
     parser.add_argument("--esp", required=True, type=pathlib.Path)
     parser.add_argument("--expected-test", required=True)
+    parser.add_argument(
+        "--expected-result",
+        choices=("pass", "fail", "panic"),
+        default="pass",
+    )
+    parser.add_argument(
+        "--expected-code",
+        type=int,
+        help="exact guest result code for an expected failure or panic",
+    )
     parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument("--require-output", action="append", default=[])
+    parser.add_argument("--forbid-output", action="append", default=[])
     return parser.parse_args()
 
 
@@ -48,6 +60,8 @@ def main() -> int:
             "none",
             "-monitor",
             "none",
+            "-semihosting-config",
+            "enable=on,target=native",
             "-serial",
             "stdio",
             "-no-reboot",
@@ -80,10 +94,40 @@ def main() -> int:
             return 124
 
     sys.stdout.buffer.write(result.stdout)
+    for required_text in arguments.require_output:
+        required = required_text.encode("ascii")
+        if required not in result.stdout:
+            print(
+                f"UEFI smoke output is missing required text: {required_text}",
+                file=sys.stderr,
+            )
+            return 3
+    for forbidden_text in arguments.forbid_output:
+        forbidden = forbidden_text.encode("ascii")
+        if forbidden in result.stdout:
+            print(
+                f"UEFI smoke output contains forbidden text: {forbidden_text}",
+                file=sys.stderr,
+            )
+            return 3
     protocol_result = classify_process_result(result.stdout, result.returncode)
+    expected_classification, default_code = {
+        "pass": (HostClassification.PASS, 0),
+        "fail": (HostClassification.EXPLICIT_FAILURE, 64),
+        "panic": (HostClassification.PANIC_OR_ASSERTION, 2),
+    }[arguments.expected_result]
+    expected_code = (
+        arguments.expected_code
+        if arguments.expected_code is not None
+        else default_code
+    )
+    if arguments.expected_result == "pass" and expected_code != 0:
+        print("a pass result requires expected code 0", file=sys.stderr)
+        return 125
     if (
-        protocol_result.classification is not HostClassification.PASS
+        protocol_result.classification is not expected_classification
         or protocol_result.test_identifier != arguments.expected_test
+        or protocol_result.guest_result_code != expected_code
     ):
         print(
             f"UEFI smoke classification: {protocol_result.classification.value}: "
@@ -92,7 +136,7 @@ def main() -> int:
         )
         return protocol_result.harness_status or 3
 
-    print("Warren UEFI smoke test passed")
+    print(f"Warren UEFI smoke test observed expected {arguments.expected_result} result")
     return 0
 
 

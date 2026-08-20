@@ -191,6 +191,82 @@ it does not override `memory_kind`. Burrow allocation policy consumes the
 normalized Warren kind and only interprets source attributes through a handler
 for the declared source kind.
 
+### 6.1 UEFI Producer Translation
+
+The Warren UEFI producer translates every memory type in the pinned header
+baseline as follows. It retains the original numeric UEFI type and complete
+attribute mask in every resulting entry, including entries split by a live
+resource overlay.
+
+| UEFI type | Value | Warren memory kind |
+| --- | ---: | --- |
+| `EfiReservedMemoryType` | 0 | reserved |
+| `EfiLoaderCode` | 1 | loader reclaimable |
+| `EfiLoaderData` | 2 | loader reclaimable |
+| `EfiBootServicesCode` | 3 | firmware reclaimable |
+| `EfiBootServicesData` | 4 | firmware reclaimable |
+| `EfiRuntimeServicesCode` | 5 | firmware runtime |
+| `EfiRuntimeServicesData` | 6 | firmware runtime |
+| `EfiConventionalMemory` | 7 | usable |
+| `EfiUnusableMemory` | 8 | unusable |
+| `EfiACPIReclaimMemory` | 9 | ACPI reclaimable |
+| `EfiACPIMemoryNVS` | 10 | ACPI NVS |
+| `EfiMemoryMappedIO` | 11 | MMIO |
+| `EfiMemoryMappedIOPortSpace` | 12 | MMIO |
+| `EfiPalCode` | 13 | reserved |
+| `EfiPersistentMemory` | 14 | persistent |
+| `EfiUnacceptedMemoryType` | 15 | reserved |
+
+An unrecognized, OEM-reserved, or OS-reserved numeric source type causes
+production to fail rather than becoming usable memory. A later platform policy
+may explicitly classify such a type only after documenting its ownership and
+updating producer tests. Unaccepted memory remains reserved until a future
+owner implements and proves the platform's acceptance operation.
+
+The producer overlays the complete allocated page extents for the boot-
+information object, Burrow image, and bootstrap stack with their dedicated
+Warren kinds. An overlay may cross source-descriptor boundaries, but it must be
+fully covered without a gap and must not overlap another live resource. Splits
+are deterministic, and adjacent results coalesce only when the Warren kind,
+UEFI source type, and UEFI attributes all agree.
+
+The reference loader's storage plan is boot policy rather than protocol ABI. It
+reserves a zero-filled 64 KiB bootstrap stack and adds capacity for 32 UEFI
+descriptors beyond the first reported map size. Page rounding of the map buffer
+is included in the usable descriptor capacity. Producer work storage then
+allows two additional normalized entries for each of the three live resource
+overlays, and the contiguous protocol object is sized for that complete maximum
+plus the reference early-console record. Every size, count, multiplication,
+rounding operation, and conversion to a protocol-width field is checked before
+firmware allocation.
+
+The stack, memory-map buffer, decoded source descriptors, producer work entries,
+and protocol object use separate loader-owned page allocations. They are zeroed
+before use and must be pairwise disjoint. Before the first
+`ExitBootServices()` attempt, partial allocation failure unwinds in reverse
+order. A failed free remains recorded so cleanup can be retried or the retained
+allocation can be reported before firmware-controlled termination; no such
+cleanup is permitted after the first exit attempt.
+
+The reference finalization transaction is bounded to eight storage resizes and
+eight `ExitBootServices()` attempts. Each successful `GetMemoryMap()` snapshot
+must use descriptor version 1, the planned descriptor stride, a whole number of
+descriptors, and checked iteration bounds. The loader decodes that exact raw
+snapshot into its owned source-descriptor storage, rebuilds the canonical
+object, and independently validates the result before using the snapshot's map
+key. No firmware callback occurs between that successful capture and the exit
+attempt.
+
+`EFI_BUFFER_TOO_SMALL` causes checked replacement map, decode, work, and object
+storage to be allocated while reusing the fixed bootstrap stack, then the
+transaction restarts from a new capture. Before the first exit attempt, the
+superseded capacity-dependent storage is released; afterward it is deliberately
+retained and becomes loader-reclaimable memory after successful exit, avoiding
+a forbidden general cleanup path in the restricted phase. `EFI_INVALID_PARAMETER` from
+`ExitBootServices()` is treated as a stale key: the old key is discarded, the
+map and object are rebuilt, and only the new key is retried. Any other exit
+failure is terminal.
+
 ## 7. Command Line
 
 The command-line section has stride 1 and `count` equal to its byte length. Its
