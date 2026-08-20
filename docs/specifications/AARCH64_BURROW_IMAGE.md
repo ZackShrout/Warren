@@ -44,10 +44,23 @@ runtime library, or unresolved target symbol.
 The entry is the C-compatible architecture symbol
 `burrow_aarch64_entry`. LLD localizes its hidden definition in the final symbol
 table; it remains a nonempty `STT_FUNC` at ELF entry address `0x1000`. Its
-AArch64 assembly body records the incoming handoff state, checks the fixed
-boot-information prefix, stack/register state, DAIF masks, current EL, and
-bounded PL011 descriptor, and then enters a masked wait. It imports no runtime
-and does not call architecture-neutral C++.
+AArch64 assembly body records the incoming handoff state, installs the matching
+2 KiB emergency vector table, checks the fixed boot-information prefix,
+stack/register state, DAIF masks, and current EL. It then calls the retained
+shared validator and one-shot transition planner before consuming the validated
+PL011 descriptor. It then cleans and invalidates implemented data caches,
+disables inherited translation and caches, preserves the EL1 route or descends
+from EL2 with the exact normalized-entry register program, proves the common
+physical EL1h state, validates the architectural translation features, and
+builds and independently audits the fixed-capacity table hierarchy. It then
+preflights the live mappings, activates the owned EL1 translation registers,
+branches to the stable image alias, installs the stable vectors and guarded
+stack, rebases retained resources, and replaces TTBR0 with the empty root before
+entering a masked wait. The terminal reporter captures
+either EL1 or EL2 architectural exception state without using the stack. The
+image imports no runtime. Its architecture continuation constructs the fixed
+Core context, makes the one `burrow_kernel_entry` call, checks the exact witness
+result, and only then emits normalized success.
 
 ## 3. Load Image
 
@@ -71,16 +84,20 @@ ELF and complete program-header table. Every loadable byte and the entry are
 below `0x80000000`. The loader may therefore compute every physical address by
 adding one chosen load bias to an ELF-relative virtual address.
 
-The current ordinary debug and release images share this loaded shape:
+The current ordinary images have these profile-specific sizes while retaining
+the same three permission classes:
 
-| Header | Offset | Virtual address | File size | Memory size | Flags |
-| --- | ---: | ---: | ---: | ---: | --- |
-| `PT_LOAD` | `0x0000` | `0x0000` | `0x01FF` | `0x01FF` | R |
-| `PT_LOAD` | `0x1000` | `0x1000` | `0x02F0` | `0x02F0` | RX |
-| `PT_LOAD` | `0x2000` | `0x2000` | `0x0088` | `0x00D0` | RW |
-| `PT_DYNAMIC` | `0x2028` | `0x2028` | `0x0060` | `0x0060` | RW |
-| `PT_GNU_RELRO` | `0x2028` | `0x2028` | `0x0060` | `0x0060` | R |
-| `PT_GNU_STACK` | `0x0000` | `0x0000` | `0` | `0` | RW, non-executable |
+| Profile | Header | Offset/address | File size | Memory size | Flags |
+| --- | --- | ---: | ---: | ---: | --- |
+| Debug | `PT_LOAD` | `0x0000` | `0x02AF` | `0x02AF` | R |
+| Debug | `PT_LOAD` | `0x1000` | `0x87E4` | `0x87E4` | RX |
+| Debug | `PT_LOAD` | `0xA000` | `0x00D8` | `0x04B0` | RW |
+| Debug | `PT_DYNAMIC` / `PT_GNU_RELRO` | `0xA078` | `0x0060` | `0x0060` | RW / R |
+| Release | `PT_LOAD` | `0x0000` | `0x02C0` | `0x02C0` | R |
+| Release | `PT_LOAD` | `0x1000` | `0x5048` | `0x5048` | RX |
+| Release | `PT_LOAD` | `0x7000` | `0x00D8` | `0x04B0` | RW |
+| Release | `PT_DYNAMIC` / `PT_GNU_RELRO` | `0x7078` | `0x0060` | `0x0060` | RW / R |
+| Both | `PT_GNU_STACK` | `0x0000` | `0` | `0` | RW, non-executable |
 
 The exact current sizes are evidence for the minimal image, not reserved ABI
 addresses. Later owned content may change them while preserving every bound,
@@ -90,16 +107,16 @@ permission, alignment, and overlap rule above.
 
 The runtime copy currently retains these sections:
 
-| Section | Type | Loaded class | Current address |
+| Section | Type | Loaded class | Debug / Release address |
 | --- | --- | --- | ---: |
 | `.dynsym` | `SHT_DYNSYM` | R | `0x0190` |
 | `.gnu.hash` | GNU hash | R | `0x01A8` |
 | `.dynstr` | `SHT_STRTAB` | R | `0x01C4` |
 | `.rodata` | `SHT_PROGBITS`, A | R | `0x01D0` |
 | `.text` | `SHT_PROGBITS`, AX | RX | `0x1000` |
-| `.data` | `SHT_PROGBITS`, WA | RW | `0x2000` |
-| `.dynamic` | `SHT_DYNAMIC`, WA | RW | `0x2028` |
-| `.bss` | `SHT_NOBITS`, WA | RW | `0x2090` |
+| `.data` | `SHT_PROGBITS`, WA | RW | `0xA000` / `0x7000` |
+| `.dynamic` | `SHT_DYNAMIC`, WA | RW | `0xA078` / `0x7078` |
+| `.bss` | `SHT_NOBITS`, WA | RW | `0xA0E0` / `0x70E0` |
 | `.symtab`, `.strtab`, `.shstrtab` | Symbol/strings | Not loaded | no runtime address |
 
 Allocated sections are wholly contained by a compatible load class. A
@@ -262,7 +279,10 @@ physical bases, exact copies, BSS and gap zeroing, malformed headers, segment
 and dynamic metadata, relocation type/symbol/target/addend errors, duplicate
 targets, failed reads, destination errors, and arithmetic overflow. The system
 profiles also pass their generated runtime ELF through the production loader on
-the host before QEMU boots the same packaged bytes.
+the host before QEMU boots the same packaged bytes. Separate Core fixtures run
+the exact complete consumer and transition planner linked into Burrow, covering
+fragment joining, deterministic arena selection, reserved-resource exclusion,
+exact fits, exhaustion, mapping capacity, W^X, overlap, and checked boundaries.
 
 ## 11. Combined ESP Packaging
 
@@ -287,11 +307,13 @@ the selected inputs, build the combined image twice and require identical
 SHA-256 bytes, exercise the generated ELF through production C++, and boot the
 same ESP through UEFI.
 
-The combined QEMU path emits `BEGIN:burrow-first-entry`, the live loaded-image
+The combined QEMU path emits `BEGIN:aarch64-normalized-entry`, the live loaded-image
 diagnostic, a direct post-`ExitBootServices()` loader line, Burrow's observed EL
-and boot-information address, and `PASS:burrow-first-entry`. Burrow then uses
-the exact test-only `SYS_EXIT_EXTENDED` operation with status zero. The host
-requires serial/process agreement.
+and boot-information address, the matching normalized-entry diagnostic after
+the Core witness, and `PASS:aarch64-normalized-entry`. Explicit
+`virtualization=off` and `virtualization=on` routes prove inherited EL1 and EL2.
+Burrow then uses the exact test-only `SYS_EXIT_EXTENDED` operation with status
+zero. The host requires serial/process agreement.
 
 `WARREN_ENABLE_QEMU_TEST_RESULT` defaults off and is enabled only by combined
 system-test orchestration. Its private `WARREN_QEMU_TEST_RESULT_MODE` selection
@@ -299,18 +321,24 @@ is one of `pass`, `fail`, or `panic`; each mode chooses one exact terminal line
 and matching status block. The transport object lives under
 `kernel/src/Platform/QemuVirt` and is not compiled into ordinary Burrow.
 The same test object owns a bounded dynamic failure entry for witness codes
-65–72. That entry accepts only the allocated range, uses the QEMU-virt PL011
-base rather than trusting a rejected console record, emits the matching decimal
-code, and updates the shared semihosting argument block before the one common
-trap.
+65–81 and a dedicated architectural-exception entry for common `PANIC` code 4.
+The failure entry accepts only the allocated range and uses the QEMU-virt PL011
+base rather than trusting a rejected console record. The exception entry is
+reached only after the production reporter emits its architectural record. Both
+update the shared semihosting argument block before the one common trap.
 
 Focused debug and release artifacts must contain no semihosting HLT, terminal
-test marker, exit argument block, or branch from first entry into the transport.
+test marker, exit argument block, injected `BRK`, or branch into the transport.
 The byte-level and disassembly artifact verifier enforces absence in ordinary
 products and the exact selected shape in every system-test child.
 The system matrix also packages a UEFI fault image that corrupts the finalized
 boot-information magic only after successful firmware exit. Its live QEMU test
 requires `FAIL`/68 and forbids the normal Burrow first-entry diagnostic, proving
 that consumer validation is independent of the loader's earlier validation. A
-second image clears the finalized console output flag and requires `FAIL`/72,
-proving that the fixed QEMU reporter does not use the rejected record.
+second image clears the finalized console output flag and requires complete-
+consumer `FAIL`/74, proving that the fixed QEMU reporter does not use the
+rejected record.
+A dedicated emergency-vector child injects `BRK #0x777` only after the
+validated PL011 record is published. Both inherited EL1 and EL2 boots require
+stage 2, vector class 4, ESR `0xF2000777`, the matching current EL, and agreed
+`PANIC`/4.

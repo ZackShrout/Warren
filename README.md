@@ -13,9 +13,23 @@ with Warren-owned production C++, allocates firmware-selected pages, copies and
 zero-fills the load image, constructs and validates boot information from the
 final UEFI memory map, exits boot services, and transfers through the reviewed
 AArch64 boundary. Pinned QEMU boots prove Burrow's assembly witness executes at
-EL1 and accepts the observable handoff contract. The current proof deliberately
-stops before exception vectors, EL normalization, owned mappings, or
-architecture-neutral kernel C++ entry.
+both inherited EL1 and EL2, accepts the observable handoff contract, and
+installs a terminal emergency vector table at the active EL. Deliberate
+synchronous exceptions at both levels report their architectural state and
+terminate through `PANIC`/4. Burrow now also runs the complete shared
+boot-information validator and deterministically reserves its immutable
+128-page transition arena from validated `usable` memory. Burrow then abandons
+the inherited firmware translation and cache state: the inherited EL1 route
+stays at EL1, while the inherited EL2 route performs the reviewed one-way
+`ERET`; both reach the same physical, MMU-off EL1h state with masked DAIF. The
+common path validates the implemented 4 KiB granule and physical-address width,
+then materializes and independently audits bounded four-level TTBR0/TTBR1
+hierarchies in the reserved arena. It preflights every live source and target,
+activates the owned EL1 regime, branches to the stable image alias, installs the
+stable vectors and guarded stack, rebases retained resources, and replaces
+TTBR0 with an empty root. It then constructs the fixed 64-byte entry context,
+calls architecture-neutral kernel C++, revalidates the aliased boot object,
+writes the retained witness, and accepts only the exact success return.
 
 ## Project Vocabulary
 
@@ -56,6 +70,7 @@ trustworthy platform on which those things can eventually be built.
 - [`docs/FILESYSTEM.md`](docs/FILESYSTEM.md) — staged storage plan and criteria for the eventual system filesystem
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural-decision-record policy and decision index
 - [`docs/specifications/AARCH64_BURROW_IMAGE.md`](docs/specifications/AARCH64_BURROW_IMAGE.md) — implemented Burrow ELF and packaging contract
+- [`docs/specifications/AARCH64_NORMALIZED_ENTRY.md`](docs/specifications/AARCH64_NORMALIZED_ENTRY.md) — implemented register, mapping, and generic-entry contract
 - [`CODE_STANDARDS.md`](CODE_STANDARDS.md) — Warren-specific C++ and assembly standards
 
 ## Working Agreement
@@ -102,21 +117,27 @@ The build keeps Burrow and UEFI in separate compiler environments, then places
 compares both packaged payloads, rebuilds the ESP twice for byte equality, runs
 the production loader against the generated runtime ELF on the host, and boots
 it on the pinned QEMU machine. The combined test requires matching serial and
-process results for `burrow-first-entry`: UEFI loads Burrow, constructs and
+process results for `aarch64-normalized-entry`: UEFI loads Burrow, constructs and
 validates the final boot-information object, exits boot services, and transfers
 through the reviewed AArch64 boundary; Burrow then validates the directly
 observable entry state and reports the terminal result. The system-only Burrow
-children contain the QEMU result transport. Separate target fixtures prove
-matching pass, explicit-failure, and panic serial/process results; UEFI fault
-fixtures prove rejection of malformed finalized handoff data and loader-side
-post-exit containment. Focused Burrow products do not contain that transport.
+children contain the QEMU result transport. Both live profiles must also emit
+the matching `BURROW_NORMALIZED_ENTRY` diagnostic after C++ returns. Separate
+target fixtures prove matching pass, explicit-failure, and panic serial/process
+results, every normalized failure allocation from 75 through 81, both stack
+guards, text-write and data-execute protection, and stale-identity removal.
+UEFI fault fixtures prove rejection of malformed finalized handoff data and
+loader-side post-exit containment. Focused Burrow products do not contain that
+transport or any fault injection.
 
 Before final map capture, loader diagnostics use the UEFI console. After a
 successful exit, the loader and first-entry witness use minimal direct PL011
-output under the inherited firmware identity mapping. That one-way output is
-not the later reusable Burrow console. Semihosting exists only in trusted QEMU
-test artifacts and is neither an ordinary shutdown path nor a physical-machine
-interface.
+output under the inherited firmware identity mapping. The normalized witness
+uses the checked upper MMIO alias after owned translation is active and every
+identity mapping has been removed. That one-way output is not the later
+reusable Burrow console. Semihosting exists
+only in trusted QEMU test artifacts and is neither an ordinary shutdown path nor
+a physical-machine interface.
 
 The `aarch64-debug` and `uefi-aarch64-debug` presets remain available for
 focused product builds. The Burrow, UEFI, and system profiles each have a

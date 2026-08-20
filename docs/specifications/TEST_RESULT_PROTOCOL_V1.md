@@ -200,25 +200,30 @@ The harness prints captured output and its classification on every non-pass
 path. It preserves the guest result code as diagnostic metadata even though the
 harness status reports the broader class.
 
-## 9. Current First-Entry System Test
+## 9. AArch64 Normalized-Entry System Test
 
 The combined UEFI/Burrow system image emits:
 
 ```text
-WARREN_TEST:1:BEGIN:burrow-first-entry
-WARREN_TEST:1:PASS:burrow-first-entry
+WARREN_TEST:1:BEGIN:aarch64-normalized-entry
+WARREN_TEST:1:PASS:aarch64-normalized-entry
 ```
 
 The loader emits `BEGIN` before opening the packaged runtime ELF. Burrow emits
 `PASS` only after the image has been validated and materialized, the final boot
 information object has been built and validated, UEFI boot services have ended,
 the AArch64 handoff has installed the declared stack and registers, and the
-first-entry witness has checked the directly observable contract. Burrow then
+first-entry witness has checked the directly observable contract. Burrow must
+then remove inherited firmware translation, reach common MMU-off EL1h, build
+and audit its fixed-capacity tables, activate the owned regime, transfer to the
+higher half, remove identity mappings, and receive the exact retained witness
+result from architecture-neutral C++. Burrow then
 requests `SYS_EXIT_EXTENDED` status zero. The host accepts the test only when the
 serial terminal record and QEMU status agree. Focused non-test Burrow artifacts
 contain neither the terminal marker, semihosting argument block, nor trap.
 
-The `burrow-first-entry` test owns these test-specific failure codes:
+The retained `burrow-first-entry` negative fixtures own these test-specific
+failure codes:
 
 | Code | Failure class |
 | ---: | --- |
@@ -233,11 +238,47 @@ The `burrow-first-entry` test owns these test-specific failure codes:
 | `72` | Early-console record |
 | `73` | Loader post-exit failure containment fixture |
 
-Codes 65–72 are emitted only by QEMU platform test support after the assembly
-witness selects a failure class. The reporter uses the reference machine's
-fixed PL011 independently of the rejected object; ordinary Burrow images retain
-the same classifications but enter their masked wait because they contain no
-test transport.
+The bounded dynamic reporter accepts codes 65–81. Codes 65–73 retain the
+`burrow-first-entry` identifier; codes 74–81 select
+`aarch64-normalized-entry`. The reporter uses the reference machine's fixed
+PL011 independently of a rejected object before activation and the checked
+upper MMIO alias after identity removal. Ordinary Burrow images retain the same
+classifications but enter their masked wait because they contain no test
+transport.
+
+The emergency-vector fixtures use the normalized-entry invocation. After the
+validated console record is published, a test-only `BRK #0x777` must enter
+current-EL vector class 4. The
+production reporter emits stage 2, vector 4, the requested EL, ESR
+`0xF2000777`, ELR, FAR, and SPSR before the isolated transport emits
+`PANIC:aarch64-normalized-entry:4`. EL1 and EL2 use separate QEMU processes. Focused
+artifacts contain neither the injected `BRK`, the exception terminal marker,
+nor the semihosting transport.
+
+The `aarch64-normalized-entry` test owns the remaining adjacent failure classes:
+
+| Code | Failure class |
+| ---: | --- |
+| `74` | Complete boot-information validation |
+| `75` | Unsupported architectural state or feature |
+| `76` | EL2 descent or common-EL1 proof |
+| `77` | Transition storage planning |
+| `78` | Table construction or descriptor audit |
+| `79` | Table activation or higher-half transfer proof |
+| `80` | Identity removal or surviving low reference |
+| `81` | Architecture-neutral C++ context or witness |
+
+Architectural traps at emergency or stable vectors continue to use common
+`PANIC` code 4. The implementation does not emit
+`PASS:aarch64-normalized-entry` until the C++ witness returns its exact success
+value.
+
+Dedicated build-time-only target fixtures route each code 75–81 through the
+same bounded reporter used by its production failure class. Separate stable-
+vector fixtures access both unmapped guard pages, attempt a write to executable
+read-only text, branch to writable execute-never data, and access a removed
+physical identity alias. Those architectural probes require exact stage-8 ESR
+evidence and `PANIC`/4 rather than accepting a timeout or generic failure.
 
 ## 10. Required Verification
 
@@ -255,11 +296,14 @@ Host tests cover at least:
 
 The target test matrix proves the exact AArch64 trap and argument block with
 pass, fail, and panic images. The transport fixtures select `PASS`/0, `FAIL`/64,
-or `PANIC`/2 at build time. A separate UEFI fixture corrupts the finalized magic
+or `PANIC`/2 at build time. Normalized-entry fixtures additionally prove every
+assigned failure code and the stable protection faults described above. A
+separate UEFI fixture corrupts the finalized magic
 after successful `ExitBootServices()` and requires Burrow to reject it with
 `FAIL`/68 without emitting its first-entry success diagnostic. A second clears
-the finalized console output flag and requires `FAIL`/72 through the independent
-QEMU reporter. Another enters the loader's real post-exit containment path and
+the finalized console output flag and requires complete-consumer `FAIL`/74
+through the independent QEMU reporter. Another enters the loader's real
+post-exit containment path and
 requires its direct PL011 diagnostic plus `FAIL`/73 without entering Burrow.
 Each is packaged into its own
 ESP and accepted only when the common host harness observes the expected

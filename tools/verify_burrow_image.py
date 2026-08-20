@@ -118,19 +118,66 @@ PAGE_SIZE = 4096
 IMAGE_LIMIT = 0x80000000
 MAXIMUM_U64 = 0xFFFFFFFFFFFFFFFF
 ENTRY_SYMBOL = "burrow_aarch64_entry"
+EMERGENCY_VECTOR_SYMBOL = "burrow_aarch64_emergency_vectors"
+STABLE_VECTOR_SYMBOL = "burrow_aarch64_stable_vectors"
+EMERGENCY_REPORTER_SYMBOL = "burrow_aarch64_emergency_exception"
+NORMALIZATION_SYMBOL = "burrow_aarch64_normalize"
+COMMON_EL1_SYMBOL = "burrow_aarch64_common_el1"
+ACTIVATION_SYMBOL = "burrow_aarch64_activate_translation"
+KERNEL_ENTRY_SYMBOL = "burrow_kernel_entry"
 QEMU_SEMIHOST_HLT = bytes.fromhex("00005ed4")
-QEMU_PASS_MARKER = b"WARREN_TEST:1:PASS:burrow-first-entry\r\n\0"
-QEMU_FAILURE_MARKER_TEMPLATE = b"WARREN_TEST:1:FAIL:burrow-first-entry:00\r\n\0"
+QEMU_PASS_MARKER = b"WARREN_TEST:1:PASS:aarch64-normalized-entry\r\n\0"
+QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE = (
+    b"WARREN_TEST:1:FAIL:burrow-first-entry:00\r\n\0"
+)
+QEMU_NORMALIZED_FAILURE_MARKER_TEMPLATE = (
+    b"WARREN_TEST:1:FAIL:aarch64-normalized-entry:00\r\n\0"
+)
+QEMU_EXCEPTION_MARKER = b"WARREN_TEST:1:PANIC:aarch64-normalized-entry:4\r\n\0"
 QEMU_EXIT_ARGUMENTS = struct.pack("<QQ", 0x20026, 0)
 QEMU_RESULT_MARKERS = {
     "pass": QEMU_PASS_MARKER,
-    "fail": b"WARREN_TEST:1:FAIL:burrow-first-entry:64\r\n\0",
-    "panic": b"WARREN_TEST:1:PANIC:burrow-first-entry:2\r\n\0",
+    "fail": b"WARREN_TEST:1:FAIL:aarch64-normalized-entry:64\r\n\0",
+    "panic": b"WARREN_TEST:1:PANIC:aarch64-normalized-entry:2\r\n\0",
 }
 QEMU_RESULT_ARGUMENTS = {
     "pass": QEMU_EXIT_ARGUMENTS,
     "fail": struct.pack("<QQ", 0x20026, 64),
     "panic": struct.pack("<QQ", 0x20026, 2),
+}
+
+AARCH64_FAULT_SENTINELS = {
+    "emergency": "mov w15, #0xf100",
+    "planning": "mov w15, #0xf101",
+    "unsupported-feature": "mov w15, #0xf102",
+    "common-el1": "mov w15, #0xf103",
+    "tables": "mov w15, #0xf104",
+    "activation": "mov w15, #0xf105",
+    "identity-failure": "mov w15, #0xf106",
+    "kernel-entry": "mov w15, #0xf107",
+    "lower-guard": "mov w15, #0xf110",
+    "upper-guard": "mov w15, #0xf111",
+    "text-write": "mov w15, #0xf112",
+    "data-execute": "mov w15, #0xf113",
+    "stale-identity": "mov w15, #0xf114",
+    "common-el1-vector": "mov w15, #0xf115",
+}
+
+AARCH64_FAULT_OPERATIONS = {
+    "emergency": "brk #0x777",
+    "planning": "mov w0, #0x4d",
+    "unsupported-feature": "mov x0, #0xf0000000",
+    "common-el1": "mov w0, #0x4c",
+    "tables": "str xzr, [x2, #0x2b8]",
+    "activation": "mov w0, #0x4f",
+    "identity-failure": "b ",
+    "kernel-entry": "mov w0, wzr",
+    "lower-guard": "ldr x0, [x0]",
+    "upper-guard": "ldr x0, [x0]",
+    "text-write": "str xzr, [x0]",
+    "data-execute": "br x0",
+    "stale-identity": "ldr x0, [x0]",
+    "common-el1-vector": "brk #0x779",
 }
 
 _FORBIDDEN_PROGRAM_TYPES = {
@@ -807,6 +854,120 @@ def _validate_entry_symbol(
         raise VerificationError(f"{ENTRY_SYMBOL} extends outside its section")
 
 
+def _validate_emergency_vector_symbol(
+    symbols: list[Symbol], sections: list[SectionHeader]
+) -> None:
+    vector_symbols = [
+        symbol for symbol in symbols if symbol.name == EMERGENCY_VECTOR_SYMBOL
+    ]
+    if not vector_symbols:
+        raise VerificationError(
+            f"image must define {EMERGENCY_VECTOR_SYMBOL}"
+        )
+    contracts = {
+        (symbol.information, symbol.section_index, symbol.value, symbol.size)
+        for symbol in vector_symbols
+    }
+    if len(contracts) != 1:
+        raise VerificationError("symbol tables disagree about emergency vectors")
+
+    vector_symbol = vector_symbols[0]
+    if (vector_symbol.information & 0xF) != SYMBOL_TYPE_FUNCTION:
+        raise VerificationError("emergency vectors are not a function symbol")
+    if vector_symbol.value % 2048 != 0:
+        raise VerificationError("emergency vectors are not 2 KiB-aligned")
+    if vector_symbol.size != 2048:
+        raise VerificationError("emergency vector table is not exactly 2 KiB")
+    if vector_symbol.section_index >= len(sections):
+        raise VerificationError("emergency vectors have an invalid section")
+    vector_section = sections[vector_symbol.section_index]
+    if not vector_section.flags & SECTION_FLAG_EXECUTE:
+        raise VerificationError("emergency vectors are not executable")
+    if (
+        vector_symbol.value < vector_section.address
+        or vector_symbol.value + vector_symbol.size
+        > vector_section.address + vector_section.size
+    ):
+        raise VerificationError("emergency vectors extend outside their section")
+
+
+def _validate_emergency_vector_table(
+    reader: Reader,
+    loads: list[ProgramHeader],
+    symbols: list[Symbol],
+    sections: list[SectionHeader],
+) -> None:
+    vector = next(
+        symbol for symbol in symbols if symbol.name == EMERGENCY_VECTOR_SYMBOL
+    )
+    reporters = [
+        symbol for symbol in symbols if symbol.name == EMERGENCY_REPORTER_SYMBOL
+    ]
+    if not reporters:
+        raise VerificationError(f"image must define {EMERGENCY_REPORTER_SYMBOL}")
+    reporter_contracts = {
+        (symbol.information, symbol.section_index, symbol.value, symbol.size)
+        for symbol in reporters
+    }
+    if len(reporter_contracts) != 1:
+        raise VerificationError("symbol tables disagree about the emergency reporter")
+    reporter = reporters[0]
+    if (reporter.information & 0xF) != SYMBOL_TYPE_FUNCTION:
+        raise VerificationError("emergency reporter is not a function symbol")
+    if reporter.size == 0:
+        raise VerificationError("emergency reporter has zero size")
+    if reporter.section_index >= len(sections):
+        raise VerificationError("emergency reporter has an invalid section")
+    reporter_section = sections[reporter.section_index]
+    if not reporter_section.flags & SECTION_FLAG_EXECUTE:
+        raise VerificationError("emergency reporter is not executable")
+    reporter_end = _checked_end(
+        reporter.value,
+        reporter.size,
+        IMAGE_LIMIT,
+        EMERGENCY_REPORTER_SYMBOL,
+    )
+    if (
+        reporter.value < reporter_section.address
+        or reporter_end > reporter_section.address + reporter_section.size
+    ):
+        raise VerificationError("emergency reporter extends outside its section")
+    reporter_address = reporter.value
+
+    table_offset = _virtual_file_offset(
+        loads,
+        vector.value,
+        vector.size,
+        "emergency vector table",
+    )
+    table = reader.range(table_offset, vector.size, "emergency vector table")
+    for vector_number in range(16):
+        slot_offset = vector_number * 128
+        move, branch = struct.unpack_from("<II", table, slot_offset)
+        expected_move = 0xD2800011 | (vector_number << 5)
+        if move != expected_move:
+            raise VerificationError(
+                f"emergency vector {vector_number} has an invalid classifier encoding"
+            )
+        if (branch & 0xFC000000) != 0x14000000:
+            raise VerificationError(
+                f"emergency vector {vector_number} has an invalid branch encoding"
+            )
+        immediate = branch & 0x03FFFFFF
+        if immediate & 0x02000000:
+            immediate -= 0x04000000
+        branch_address = vector.value + slot_offset + 4
+        target = branch_address + immediate * 4
+        if target != reporter_address:
+            raise VerificationError(
+                f"emergency vector {vector_number} branches outside the reporter"
+            )
+        if any(table[slot_offset + 8 : slot_offset + 128]):
+            raise VerificationError(
+                f"emergency vector {vector_number} has nonzero slot padding"
+            )
+
+
 def _virtual_file_offset(
     loads: list[ProgramHeader], address: int, size: int, description: str
 ) -> int:
@@ -998,13 +1159,26 @@ def _validate_qemu_test_result_transport(
             f"QEMU semihost HLT must be {requirement}, found {hlt_count}"
         )
 
-    failure_template_count = loaded_bytes.count(QEMU_FAILURE_MARKER_TEMPLATE)
     expected_failure_template_count = 1 if mode is not None else 0
-    if failure_template_count != expected_failure_template_count:
+    for marker, name in (
+        (QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE, "first-entry"),
+        (QEMU_NORMALIZED_FAILURE_MARKER_TEMPLATE, "normalized-entry"),
+    ):
+        failure_template_count = loaded_bytes.count(marker)
+        if failure_template_count != expected_failure_template_count:
+            requirement = "exactly once" if mode is not None else "absent"
+            raise VerificationError(
+                f"QEMU {name} failure marker template must be "
+                f"{requirement}, found {failure_template_count}"
+            )
+
+    exception_marker_count = loaded_bytes.count(QEMU_EXCEPTION_MARKER)
+    expected_exception_marker_count = 1 if mode is not None else 0
+    if exception_marker_count != expected_exception_marker_count:
         requirement = "exactly once" if mode is not None else "absent"
         raise VerificationError(
-            "QEMU first-entry failure marker template must be "
-            f"{requirement}, found {failure_template_count}"
+            "QEMU exception marker must be "
+            f"{requirement}, found {exception_marker_count}"
         )
 
     for result_mode in QEMU_RESULT_MARKERS:
@@ -1038,6 +1212,8 @@ def verify_image(
     _validate_sections(sections, loads, runtime=runtime)
     symbols = _parse_symbols(reader, sections)
     _validate_entry_symbol(header, symbols, sections)
+    _validate_emergency_vector_symbol(symbols, sections)
+    _validate_emergency_vector_table(reader, loads, symbols, sections)
     relocations = _parse_dynamic_metadata(
         reader, program_headers, sections, loads
     )
@@ -1118,6 +1294,7 @@ def verify_first_entry_disassembly(
     image: pathlib.Path,
     *,
     qemu_test_result: str | None,
+    aarch64_entry_fault: str | None,
 ) -> None:
     result = subprocess.run(
         [
@@ -1148,7 +1325,11 @@ def verify_first_entry_disassembly(
         "mov x20, x0",
         "mrs x21, CurrentEL",
         "mrs x23, DAIF",
+        "msr VBAR_EL2",
+        "msr VBAR_EL1",
+        "isb",
         "stp x20, x21",
+        "bl ",
         "msr DAIFSet, #0xf",
         "wfe",
     ):
@@ -1160,9 +1341,16 @@ def verify_first_entry_disassembly(
             )
         cursor += 1
 
+    preparation_branches = [
+        instruction for instruction in instructions
+        if instruction.startswith("bl ") and "burrow_aarch64_prepare_transition" in instruction
+    ]
+    if len(preparation_branches) != 1:
+        raise VerificationError(
+            "Burrow first entry must call transition preparation exactly once"
+        )
+
     forbidden_registers = (
-        "VBAR_EL1",
-        "VBAR_EL2",
         "SPSR_EL2",
         "HCR_EL2",
         "SCTLR_EL1",
@@ -1171,7 +1359,7 @@ def verify_first_entry_disassembly(
         "TTBR0_EL1",
         "TTBR1_EL1",
     )
-    if any(instruction.startswith(("brk", "eret", "hvc", "smc", "svc"))
+    if any(instruction.startswith(("eret", "hvc", "smc", "svc"))
            for instruction in instructions):
         raise VerificationError("Burrow first entry contains a forbidden exception path")
     if any(register in instruction for instruction in instructions
@@ -1181,6 +1369,14 @@ def verify_first_entry_disassembly(
     if any(instruction.startswith("hlt") for instruction in instructions):
         raise VerificationError(
             "Burrow first entry directly contains semihosting"
+        )
+    brk_instructions = [
+        instruction for instruction in instructions if instruction.startswith("brk")
+    ]
+    expected_brk = ["brk #0x777"] if aarch64_entry_fault == "emergency" else []
+    if brk_instructions != expected_brk:
+        raise VerificationError(
+            "Burrow first entry has an unexpected emergency fault injection"
         )
     for code in range(65, 73):
         expected = f"mov w0, #0x{code:x}"
@@ -1201,7 +1397,7 @@ def verify_first_entry_disassembly(
         instruction for instruction in instructions
         if instruction.startswith("b ") and "burrow_qemu_test_result" in instruction
     ]
-    if len(branches_to_transport) != (1 if qemu_test_result is not None else 0):
+    if branches_to_transport:
         raise VerificationError("Burrow first entry has an unexpected QEMU transport branch")
     branches_to_failure_transport = [
         instruction for instruction in instructions
@@ -1211,6 +1407,551 @@ def verify_first_entry_disassembly(
         raise VerificationError(
             "Burrow first entry has an unexpected QEMU failure-transport branch"
         )
+
+
+def verify_emergency_vectors_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+    *,
+    qemu_test_result: str | None,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            f"--disassemble-symbols={EMERGENCY_VECTOR_SYMBOL}",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble the emergency vectors")
+
+    symbol_match = re.search(
+        rf"^([0-9a-fA-F]+) <{EMERGENCY_VECTOR_SYMBOL}>:$",
+        result.stdout,
+        re.MULTILINE,
+    )
+    if symbol_match is None:
+        raise VerificationError("emergency vector symbol address is missing")
+    base = int(symbol_match.group(1), 16)
+
+    table_result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble",
+            f"--start-address={base:#x}",
+            f"--stop-address={base + 2048:#x}",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if table_result.returncode != 0:
+        raise VerificationError("could not disassemble the complete emergency table")
+
+    instructions: dict[int, str] = {}
+    for line in table_result.stdout.splitlines():
+        stripped = line.strip()
+        match = re.match(r"^([0-9a-fA-F]+):", stripped)
+        if match is None:
+            continue
+        instruction = stripped.split(":", 1)[1].split("//", 1)[0].strip()
+        instructions[int(match.group(1), 16)] = re.sub(r"\s+", " ", instruction)
+    if not instructions:
+        raise VerificationError("emergency vector disassembly is empty")
+
+    if base % 2048 != 0:
+        raise VerificationError("emergency vector disassembly is not aligned")
+    for vector in range(16):
+        address = base + vector * 128
+        expected_move = f"mov x17, #0x{vector:x}"
+        if instructions.get(address) != expected_move:
+            raise VerificationError(
+                f"emergency vector {vector} does not begin with its classification"
+            )
+        branch = instructions.get(address + 4, "")
+        if not branch.startswith("b ") or "burrow_aarch64_emergency_exception" not in branch:
+            raise VerificationError(
+                f"emergency vector {vector} does not branch to the terminal reporter"
+            )
+
+    stable_result = subprocess.run(
+        [
+            str(objdump),
+            f"--disassemble-symbols={STABLE_VECTOR_SYMBOL}",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if stable_result.returncode != 0:
+        raise VerificationError("could not disassemble the stable vectors")
+    stable_match = re.search(
+        rf"^([0-9a-fA-F]+) <{STABLE_VECTOR_SYMBOL}>:$",
+        stable_result.stdout,
+        re.MULTILINE,
+    )
+    if stable_match is None:
+        raise VerificationError("stable vector symbol address is missing")
+    stable_base = int(stable_match.group(1), 16)
+    if stable_base % 2048 != 0:
+        raise VerificationError("stable vector disassembly is not aligned")
+    if stable_base == base:
+        raise VerificationError("stable vectors alias the inherited emergency table")
+    stable_table_result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble",
+            f"--start-address={stable_base:#x}",
+            f"--stop-address={stable_base + 2048:#x}",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    stable_instructions: dict[int, str] = {}
+    for line in stable_table_result.stdout.splitlines():
+        stripped = line.strip()
+        match = re.match(r"^([0-9a-fA-F]+):", stripped)
+        if match is None:
+            continue
+        instruction = stripped.split(":", 1)[1].split("//", 1)[0].strip()
+        stable_instructions[int(match.group(1), 16)] = re.sub(
+            r"\s+", " ", instruction
+        )
+    for vector in range(16):
+        address = stable_base + vector * 128
+        if stable_instructions.get(address) != f"mov x17, #0x{vector:x}":
+            raise VerificationError(
+                f"stable vector {vector} does not begin with its classification"
+            )
+        branch = stable_instructions.get(address + 4, "")
+        if not branch.startswith("b ") or "burrow_aarch64_emergency_exception" not in branch:
+            raise VerificationError(
+                f"stable vector {vector} does not branch to the terminal reporter"
+            )
+
+    reporter_result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble-symbols=burrow_aarch64_emergency_exception",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if reporter_result.returncode != 0:
+        raise VerificationError("could not disassemble the emergency reporter")
+    reporter = re.sub(r"\s+", " ", reporter_result.stdout)
+    for fragment in (
+        "msr DAIFSet, #0xf",
+        "mrs x15, CurrentEL",
+        "mrs x12, ESR_EL2",
+        "mrs x13, ELR_EL2",
+        "mrs x14, FAR_EL2",
+        "mrs x15, SPSR_EL2",
+        "mrs x12, ESR_EL1",
+        "mrs x13, ELR_EL1",
+        "mrs x14, FAR_EL1",
+        "mrs x15, SPSR_EL1",
+        "wfe",
+    ):
+        if fragment not in reporter:
+            raise VerificationError(
+                f"emergency reporter is missing instruction {fragment}"
+            )
+    has_test_branch = "burrow_qemu_test_exception" in reporter
+    if has_test_branch != (qemu_test_result is not None):
+        raise VerificationError(
+            "emergency reporter has an unexpected QEMU exception branch"
+        )
+
+
+def verify_transition_preparation_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble-symbols=burrow_aarch64_prepare_transition",
+            "--demangle",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble transition preparation")
+
+    output = re.sub(r"\s+", " ", result.stdout)
+    for fragment in (
+        "burrow::core::consume_boot_information",
+        "burrow::core::plan_aarch64_transition",
+    ):
+        if fragment not in output:
+            raise VerificationError(
+                f"transition preparation is missing {fragment}"
+            )
+    for value, name in (("4a", "validation"), ("4d", "planning")):
+        if re.search(rf"\bmov\s+w[0-9]+,\s*#0x{value}\b", result.stdout) is None:
+            raise VerificationError(
+                f"transition preparation is missing the {name} failure code"
+            )
+
+
+def verify_normalization_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+    *,
+    qemu_test_result: str | None,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            f"--disassemble-symbols={NORMALIZATION_SYMBOL},{COMMON_EL1_SYMBOL}",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble AArch64 normalization")
+
+    common_match = re.search(
+        rf"^([0-9a-fA-F]+) <{COMMON_EL1_SYMBOL}>:$",
+        result.stdout,
+        re.MULTILINE,
+    )
+    if common_match is None:
+        raise VerificationError("common EL1 symbol address is missing")
+    common_address = int(common_match.group(1), 16)
+
+    addressed_instructions: list[tuple[int, str]] = []
+    for line in result.stdout.splitlines():
+        match = re.match(r"^([0-9a-fA-F]+):", line.strip())
+        if match is None:
+            continue
+        instruction = line.split(":", 1)[1].split("//", 1)[0].strip()
+        addressed_instructions.append(
+            (int(match.group(1), 16), re.sub(r"\s+", " ", instruction))
+        )
+    if not addressed_instructions:
+        raise VerificationError("AArch64 normalization disassembly is empty")
+
+    pre_common = [
+        instruction for address, instruction in addressed_instructions
+        if address < common_address
+    ]
+    common_and_helpers = [
+        instruction for address, instruction in addressed_instructions
+        if address >= common_address
+    ]
+
+    def require_ordered(instructions: list[str], fragments: tuple[str, ...], name: str) -> None:
+        cursor = 0
+        for fragment in fragments:
+            while cursor < len(instructions) and fragment not in instructions[cursor]:
+                cursor += 1
+            if cursor == len(instructions):
+                raise VerificationError(
+                    f"{name} is missing ordered instruction {fragment}"
+                )
+            cursor += 1
+
+    require_ordered(
+        pre_common,
+        (
+            "cmp x21, #0x4",
+            "mrs x0, SCTLR_EL1",
+            "mov x1, #0x1005",
+            "bic x0, x0, x1",
+            "msr SCTLR_EL1, x0",
+            "isb",
+            "ic iallu",
+            "dsb sy",
+            "isb",
+            "msr CPACR_EL1, xzr",
+            "msr CNTKCTL_EL1, xzr",
+            COMMON_EL1_SYMBOL,
+        ),
+        "initial EL1 normalization route",
+    )
+
+    el1_start = next(
+        index for index, instruction in enumerate(pre_common)
+        if instruction == "mrs x0, SCTLR_EL1"
+    )
+    el1_end = next(
+        index for index in range(el1_start, len(pre_common))
+        if COMMON_EL1_SYMBOL in pre_common[index]
+    )
+    if any("_EL2" in instruction for instruction in pre_common[el1_start:el1_end + 1]):
+        raise VerificationError("initial EL1 normalization route accesses an EL2 register")
+
+    require_ordered(
+        pre_common,
+        (
+            "mrs x0, SCTLR_EL2",
+            "msr SCTLR_EL2, x0",
+            "isb",
+            "ic iallu",
+            "dsb sy",
+            "isb",
+            "mov x0, #0x80000000",
+            "msr HCR_EL2, x0",
+            "msr CPTR_EL2, xzr",
+            "mov x0, #0x3",
+            "msr CNTHCTL_EL2, x0",
+            "msr CNTVOFF_EL2, xzr",
+            "mov x0, #0x800",
+            "movk x0, #0x30d0, lsl #16",
+            "msr SCTLR_EL1, x0",
+            "msr CPACR_EL1, xzr",
+            "msr CNTKCTL_EL1, xzr",
+            "msr VBAR_EL1, x0",
+            "msr SP_EL1, x22",
+            "msr ELR_EL2, x0",
+            "mov x0, #0x3c5",
+            "msr SPSR_EL2, x0",
+            "dsb sy",
+            "isb",
+            "eret",
+        ),
+        "initial EL2 normalization route",
+    )
+    if sum(instruction == "eret" for instruction in pre_common) != 1:
+        raise VerificationError("initial EL2 route must contain exactly one ERET")
+
+    require_ordered(
+        common_and_helpers,
+        (
+            "mrs x0, CurrentEL",
+            "cmp x0, #0x4",
+            "mrs x0, DAIF",
+            "and x0, x0, #0x3c0",
+            "mov x0, sp",
+            "cmp x0, x22",
+            "mrs x0, SCTLR_EL1",
+            "tst x0, x1",
+            "burrow_image_start",
+            "ldr x1, [x20, #0x30]",
+            "mrs x0, VBAR_EL1",
+            "burrow_aarch64_emergency_vectors",
+            "mov x1, #0x3",
+            "str x1, [x0]",
+            "mrs x0, ID_AA64MMFR0_EL1",
+            "burrow_aarch64_build_transition_tables",
+            ACTIVATION_SYMBOL,
+            "mov w0, #0x4c",
+            "msr DAIFSet, #0xf",
+            "wfe",
+            "mrs x0, CLIDR_EL1",
+            "mrs x2, CCSIDR_EL1",
+            "dc cisw, x9",
+            "dsb sy",
+            "isb",
+        ),
+        "common EL1 proof and cache walk",
+    )
+
+    result_branches = [
+        instruction for _, instruction in addressed_instructions
+        if instruction.startswith("b ") and "burrow_qemu_test_result" in instruction
+    ]
+    failure_branches = [
+        instruction for _, instruction in addressed_instructions
+        if instruction.startswith("b ") and "burrow_qemu_test_failure" in instruction
+    ]
+    if result_branches:
+        raise VerificationError("normalization has an unexpected QEMU result branch")
+    expected_transport_count = 1 if qemu_test_result is not None else 0
+    if len(failure_branches) != expected_transport_count:
+        raise VerificationError("normalization has an unexpected QEMU failure branch")
+
+
+def verify_table_preparation_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble-symbols=burrow_aarch64_build_transition_tables,burrow_aarch64_preflight_activation",
+            "--demangle",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble table preparation")
+
+    output = re.sub(r"\s+", " ", result.stdout)
+    for fragment in (
+        "burrow::arch::aarch64::build_page_tables",
+        "burrow::arch::aarch64::audit_page_tables",
+        "burrow::arch::aarch64::preflight_activation",
+    ):
+        if fragment not in output:
+            raise VerificationError(f"table preparation is missing {fragment}")
+    for value, name in (("4b", "architecture"), ("4e", "table"), ("4f", "activation")):
+        if re.search(rf"\bmov\s+w[0-9]+,\s*#0x{value}\b", result.stdout) is None:
+            raise VerificationError(
+                f"table preparation is missing the {name} failure code"
+            )
+
+
+def verify_activation_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+    *,
+    qemu_test_result: str | None,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            f"--disassemble-symbols={ACTIVATION_SYMBOL}",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble AArch64 activation")
+
+    instructions: list[str] = []
+    for line in result.stdout.splitlines():
+        if not re.match(r"^[0-9a-fA-F]+:", line.strip()):
+            continue
+        instruction = line.split(":", 1)[1].split("//", 1)[0].strip()
+        instructions.append(re.sub(r"\s+", " ", instruction))
+    if not instructions:
+        raise VerificationError("AArch64 activation disassembly is empty")
+
+    cursor = 0
+    for fragment in (
+        "burrow_aarch64_preflight_activation",
+        "dsb sy",
+        "msr MAIR_EL1, x9",
+        "msr TCR_EL1, x10",
+        "msr TTBR0_EL1, x11",
+        "msr TTBR1_EL1, x12",
+        "isb",
+        "tlbi vmalle1",
+        "dsb ish",
+        "isb",
+        "msr SCTLR_EL1, x13",
+        "isb",
+        "br x26",
+        "msr VBAR_EL1, x27",
+        "isb",
+        "mov sp, x16",
+        "dsb ishst",
+        "msr TTBR0_EL1, x17",
+        "isb",
+        "tlbi vmalle1is",
+        "dsb ish",
+        "isb",
+        "mrs x0, CurrentEL",
+        "mrs x0, TTBR0_EL1",
+        "mrs x0, TTBR1_EL1",
+        "mrs x0, VBAR_EL1",
+        "mrs x0, TCR_EL1",
+        "mrs x0, MAIR_EL1",
+        "mrs x0, SCTLR_EL1",
+        "mov x1, #0x8",
+        "str x1, [x0]",
+        "sub sp, sp, #0x40",
+        "mov x0, sp",
+        "mov x1, xzr",
+        "mov x7, xzr",
+        KERNEL_ENTRY_SYMBOL,
+        "mov w1, #0x5231",
+        "movk w1, #0x5741, lsl #16",
+        "cmp w0, w1",
+        "mov sp, x22",
+        "mov x1, #0x9",
+        "str x1, [x0]",
+    ):
+        while cursor < len(instructions) and fragment not in instructions[cursor]:
+            cursor += 1
+        if cursor == len(instructions):
+            raise VerificationError(
+                f"AArch64 activation is missing ordered instruction {fragment}"
+            )
+        cursor += 1
+
+    result_branches = [
+        instruction for instruction in instructions
+        if instruction.startswith("b ") and "burrow_qemu_test_result" in instruction
+    ]
+    low_failure_branches = [
+        instruction for instruction in instructions
+        if instruction.startswith("b ") and
+        "burrow_qemu_test_failure>" in instruction
+    ]
+    stable_failure_branches = [
+        instruction for instruction in instructions
+        if instruction.startswith("b ") and
+        "burrow_qemu_test_failure_stable" in instruction
+    ]
+    expected = 1 if qemu_test_result is not None else 0
+    if len(result_branches) != expected or len(low_failure_branches) != expected or \
+            len(stable_failure_branches) != 2 * expected:
+        raise VerificationError("activation has an unexpected QEMU transport branch")
+
+    boundary_begin = next(
+        index for index, instruction in enumerate(instructions)
+        if instruction == "dsb sy"
+    )
+    boundary_end = next(
+        index for index in range(boundary_begin, len(instructions))
+        if instructions[index] == "br x26"
+    )
+    forbidden_boundary_instructions = [
+        instruction for instruction in instructions[boundary_begin:boundary_end + 1]
+        if instruction.startswith(("bl ", "ret")) or "sp" in instruction
+    ]
+    if forbidden_boundary_instructions:
+        raise VerificationError(
+            "activation register boundary uses a call, return, or stack reference"
+        )
+
+    kernel_entry_calls = [
+        instruction for instruction in instructions
+        if instruction.startswith("bl ") and KERNEL_ENTRY_SYMBOL in instruction
+    ]
+    if len(kernel_entry_calls) != 1:
+        raise VerificationError("activation must call burrow_kernel_entry exactly once")
 
 
 def verify_qemu_result_disassembly(
@@ -1274,7 +2015,7 @@ def verify_qemu_result_disassembly(
     failure_result = subprocess.run(
         [
             str(objdump),
-            "--disassemble-symbols=burrow_qemu_test_failure",
+            "--disassemble-symbols=burrow_qemu_test_failure,burrow_qemu_test_failure_stable",
             "--no-show-raw-insn",
             str(image),
         ],
@@ -1297,12 +2038,12 @@ def verify_qemu_result_disassembly(
 
     for fragment in (
         "cmp w0, #0x41",
-        "cmp w0, #0x48",
+        "cmp w0, #0x51",
         "mov x24, #0x9000000",
         "udiv w7, w19, w6",
         "msub w8, w7, w6, w19",
-        "strb w7, [x6]",
-        "strb w8, [x6, #0x1]",
+        "strb w7, [x18]",
+        "strb w8, [x18, #0x1]",
         "str x5, [x6, #0x8]",
         "b ",
         "msr DAIFSet, #0xf",
@@ -1317,6 +2058,87 @@ def verify_qemu_result_disassembly(
         for instruction in failure_instructions
     ):
         raise VerificationError("QEMU failure transport does not use the common emitter")
+
+    exception_result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble-symbols=burrow_qemu_test_exception",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if exception_result.returncode != 0:
+        raise VerificationError("could not disassemble the QEMU exception transport")
+    exception_instructions = re.sub(r"\s+", " ", exception_result.stdout)
+    for fragment in (
+        "mov x24, x0",
+        "mov x5, #0x4",
+        "str x5, [x6, #0x8]",
+        "burrow_qemu_emit_result",
+    ):
+        if fragment not in exception_instructions:
+            raise VerificationError(
+                f"QEMU exception transport is missing instruction {fragment}"
+            )
+
+
+def verify_aarch64_fault_injection_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+    *,
+    selected_fault: str | None,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble AArch64 fault injection")
+
+    instructions: list[str] = []
+    for line in result.stdout.splitlines():
+        if not re.match(r"^[0-9a-fA-F]+:", line.strip()):
+            continue
+        instruction = line.split(":", 1)[1].split("//", 1)[0].strip()
+        instructions.append(re.sub(r"\s+", " ", instruction))
+
+    observed = [
+        (fault, index)
+        for fault, sentinel in AARCH64_FAULT_SENTINELS.items()
+        for index, instruction in enumerate(instructions)
+        if instruction == sentinel
+    ]
+    expected = [] if selected_fault is None else [selected_fault]
+    if [fault for fault, _ in observed] != expected:
+        raise VerificationError(
+            "AArch64 fault injection sentinels do not match the selected fixture"
+        )
+    if selected_fault is None:
+        return
+
+    sentinel_index = observed[0][1]
+    operation = AARCH64_FAULT_OPERATIONS[selected_fault]
+    window = instructions[sentinel_index + 1 : sentinel_index + 9]
+    if operation == "b ":
+        matched = any(instruction.startswith(operation) for instruction in window)
+    else:
+        matched = operation in window
+    if not matched:
+        raise VerificationError(
+            f"AArch64 {selected_fault} fixture is missing its fault operation"
+        )
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -1340,6 +2162,11 @@ def parse_arguments() -> argparse.Namespace:
         choices=("pass", "fail", "panic"),
         help="require the selected isolated QEMU result transport",
     )
+    parser.add_argument(
+        "--aarch64-entry-fault",
+        choices=tuple(AARCH64_FAULT_SENTINELS),
+        help="require one selected test-only AArch64 entry fault",
+    )
     return parser.parse_args()
 
 
@@ -1356,11 +2183,40 @@ def main() -> int:
             arguments.objdump,
             arguments.image,
             qemu_test_result=arguments.qemu_test_result,
+            aarch64_entry_fault=arguments.aarch64_entry_fault,
+        )
+        verify_emergency_vectors_disassembly(
+            arguments.objdump,
+            arguments.image,
+            qemu_test_result=arguments.qemu_test_result,
+        )
+        verify_transition_preparation_disassembly(
+            arguments.objdump,
+            arguments.image,
+        )
+        verify_normalization_disassembly(
+            arguments.objdump,
+            arguments.image,
+            qemu_test_result=arguments.qemu_test_result,
+        )
+        verify_table_preparation_disassembly(
+            arguments.objdump,
+            arguments.image,
+        )
+        verify_activation_disassembly(
+            arguments.objdump,
+            arguments.image,
+            qemu_test_result=arguments.qemu_test_result,
         )
         verify_qemu_result_disassembly(
             arguments.objdump,
             arguments.image,
             mode=arguments.qemu_test_result,
+        )
+        verify_aarch64_fault_injection_disassembly(
+            arguments.objdump,
+            arguments.image,
+            selected_fault=arguments.aarch64_entry_fault,
         )
         if arguments.reference_image is not None:
             if not arguments.runtime:

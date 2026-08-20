@@ -1,6 +1,7 @@
 # Warren Architecture
 
-**Status:** Phase 0 contracts accepted; Phase 1 first entry implemented
+**Status:** Phase 0 contracts accepted; Phase 1 normalized higher-half entry
+implemented through architecture-neutral C++ arrival
 
 **Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
 
@@ -8,8 +9,17 @@
 
 This document describes the direction in which Warren begins. The UEFI
 bootloader now loads and enters the audited Burrow ELF image through the
-accepted physical handoff. Burrow's assembly witness stops before execution
-normalization or architecture-neutral kernel entry. Stable decisions are
+accepted physical handoff. Burrow's assembly witness now installs a terminal
+emergency vector table at inherited EL1 or EL2. Its first freestanding C++
+boundary performs complete boot-information validation and immutable transition
+planning. Architecture assembly then removes inherited firmware translation
+and cache state and converges both inherited EL1 and EL2 routes at one physical,
+MMU-off EL1h label. The common path builds and independently audits the bounded
+owned translation hierarchy, activates it, transfers to the stable image,
+installs the owned vectors and guarded stack, and removes every TTBR0 identity
+mapping. It constructs the fixed Core entry context, revalidates the aliased
+boot object in architecture-neutral C++, and retains the successful witness.
+Stable decisions are
 recorded in `docs/adr/`, and exact subordinate formats live in
 `docs/specifications/`.
 
@@ -48,7 +58,7 @@ Initial machine assumptions:
 | Concern | Initial choice |
 | --- | --- |
 | CPU architecture | AArch64 / ARMv8.0-A, Cortex-A57 reference CPU |
-| Privilege | Loader may hand off at EL1 or EL2; a later stage normalizes to EL1 |
+| Privilege | Loader may hand off at EL1 or EL2; Burrow normalizes both to EL1h |
 | CPU count | One |
 | Memory | 512 MiB reference configuration |
 | Base page size | 4 KiB |
@@ -100,12 +110,15 @@ removable-media path `EFI/BOOT/BOOTAA64.EFI` in a deterministic FAT32 image. It
 contains no Burrow payload and is a structural and reproducibility surface, not
 a successful system boot. The combined system image additionally packages
 Burrow at `EFI/WARREN/BURROW.ELF`. Only that combined image owns the current
-`burrow-first-entry` QEMU result. Burrow emits the terminal serial record and
+`aarch64-normalized-entry` QEMU result. Burrow emits the terminal serial record and
 uses the test-only semihosting exit; the host requires both channels to agree.
 Dedicated pass, explicit-failure, and panic Burrow children prove the transport
-without adding it to the ordinary kernel image. Separate UEFI fault fixtures
-prove Burrow rejects finalized header and console corruption and prove the
-loader's post-exit failure containment without entering Burrow.
+without adding it to the ordinary kernel image. Build-time-only Burrow children
+also prove exact failures 75–81 and take real stable-vector faults for both
+stack guards, text writes, data execution, and removed identity aliases.
+Separate UEFI fault fixtures prove Burrow rejects finalized header and console
+corruption and prove the loader's post-exit failure containment without
+entering Burrow.
 
 Loader diagnostics use the UEFI console only before the final memory-map
 transaction. After successful exit, the loader and Burrow witness use bounded
@@ -130,10 +143,12 @@ physical extent, load bias, and relocated entry. The loader then allocates the
 bootstrap stack and handoff storage, normalizes the final UEFI memory map,
 constructs and validates boot information, exits boot services with bounded
 stale-key retry, synchronizes executable bytes, and transfers with the accepted
-AArch64 register and stack state. Burrow's first-entry assembly checks the fixed
-header prefix and PL011 record, records the observed EL and handoff state, and
-stops without installing vectors, changing translation state, or calling
-architecture-neutral C++.
+AArch64 register and stack state. Burrow's first-entry assembly installs the
+matching inherited-EL emergency vectors before variable-size parsing, checks
+the fixed header prefix and PL011 record, records the observed EL and handoff
+state, then continues through normalized EL1, owned translation, higher-half
+transfer, identity removal, and architecture-neutral C++. The terminal vector reporter captures EL1/EL2
+architectural state without using the stack; it is not an exception dispatcher.
 
 ## Source Layout
 
@@ -330,10 +345,12 @@ Nothing becomes stable merely because it was committed once.
 
 ## Scheduled Architectural Decisions
 
-The Phase 0 decision queue is empty. First Light still requires the focused,
-register-level EL2/EL1 normalization sequence already governed by ADR-0011; it
-will be settled with the prototype that can prove both entry paths rather than
-guessed in Phase 0.
+The Phase 0 decision queue is empty. First Light's focused register-level
+EL2/EL1 normalization sequence is implemented under ADR-0011 and proven through
+both live firmware entry paths. Owned translation activation, higher-half
+transfer, and identity removal are also implemented and proven through both
+routes. The fixed architecture-neutral C++ boundary is also implemented and
+proven; later kernel initialization remains.
 
 Later decisions include the syscall ABI, kernel object model, scheduler policy,
 VFS semantics, libc strategy, service model, package format, graphics stack, and

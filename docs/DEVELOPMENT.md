@@ -103,25 +103,45 @@ environment.
 CTest extracts the bootloader and runtime ELF from the combined ESP and compares
 their bytes to the selected inputs, proves complete ESP reproducibility,
 materializes the generated runtime ELF through the production C++ loader on the
-host, and runs the combined `burrow-first-entry` QEMU test. That gate requires
-the post-exit loader diagnostic, Burrow's first-entry witness, and agreement
-between Burrow's terminal PL011 record and QEMU semihosting status. The host
-profile also exercises independent malformed loader fixtures, handoff storage
-and finalization, the artifact verifier, ESP input failures, the
-boot-information ABI, the serial classifier, and toolchain gates.
+host, and runs the combined `aarch64-normalized-entry` QEMU test through explicit
+EL1 and EL2 profiles. `WarrenSystemAArch64NormalizedEntryEl1` names
+`virtualization=off`; `WarrenSystemAArch64NormalizedEntryEl2` names
+`virtualization=on`. Both gates require the requested post-exit loader EL,
+Burrow's matching first-entry observation, and agreement between Burrow's
+matching `BURROW_NORMALIZED_ENTRY:initial=ELn:normalized=EL1:tables=owned:`
+`identity=removed:cpp=arrived` observation,
+terminal PL011 record, and QEMU semihosting status. The host profile also
+exercises the profile-selection logic, independent malformed loader fixtures,
+handoff storage and finalization, the artifact verifier, ESP input failures,
+the boot-information ABI, the serial classifier, and toolchain gates.
 
 The combined system build explicitly enables the test-only QEMU transport in
 its Burrow child. Focused `aarch64-debug` and `aarch64-release` products leave
 that option off, and their artifact verification rejects the semihosting trap,
-terminal markers, and argument blocks. The system build also composes dedicated
-failure and panic ESP fixtures. `WarrenSystemQemuResultFailure` requires an
-agreed `FAIL`/64 result, while `WarrenSystemQemuResultPanic` requires an agreed
+terminal markers, argument blocks, and fault injection. The system build also
+composes dedicated failure, panic, emergency-vector, transition-failure, guard,
+permission, and stale-alias ESP fixtures.
+`WarrenSystemEmergencyVectorEl1` and `WarrenSystemEmergencyVectorEl2` inject the
+same `BRK #0x777` after the validated console record and require vector class 4,
+stage 2, ESR `0xF2000777`, the requested current EL, and agreed `PANIC`/4.
+`WarrenSystemCommonEl1Vector` injects `BRK #0x779` after both entry routes have
+reached the common physical EL1 state and requires stage 3, ESR `0xF2000779`,
+EL1, and agreed `PANIC`/4.
+The `WarrenSystemRejects*` normalized-entry fixtures exercise every assigned
+failure code from 75 through 81 and forbid the C++ arrival diagnostic. The
+lower/upper-stack-guard, text-write, data-execute, and stale-identity tests run
+after TTBR0 removal through the stable EL1 vector table. They require exact
+stage-8 translation, write-permission, execute-permission, and level-0 stale-
+alias syndromes respectively, plus agreed `PANIC`/4 terminal results.
+`WarrenSystemQemuResultFailure` requires an agreed `FAIL`/64 result, while
+`WarrenSystemQemuResultPanic` requires an agreed
 `PANIC`/2 result through the same QEMU harness used by the successful boot.
 `WarrenSystemBurrowRejectsInvalidHeader` corrupts the finalized magic after
 firmware exit and requires `FAIL`/68 with no Burrow success diagnostic.
 `WarrenSystemBurrowRejectsInvalidConsole` clears the finalized console output
-flag and requires `FAIL`/72, proving that the QEMU failure reporter does not
-trust the rejected record.
+flag and requires complete-consumer `FAIL`/74, proving both that Burrow reruns
+the shared validator and that the QEMU failure reporter does not trust the
+rejected record.
 `WarrenSystemPostExitFailureContainment` enters the loader's nonreturning
 post-exit failure routine and requires its direct diagnostic plus `FAIL`/73,
 again without entering Burrow.
@@ -266,9 +286,10 @@ Target-only behavior runs in QEMU. A test boot has:
 
 The exact ASCII grammar, guest codes, host statuses, ordering, and disagreement
 precedence are fixed in `specifications/TEST_RESULT_PROTOCOL_V1.md`. The current
-combined proof uses the two-channel `burrow-first-entry` contract after UEFI
-boot services have ended. It proves Burrow assembly execution, not the later
-normalized kernel entry or an ordinary shutdown facility.
+combined proof uses the two-channel `aarch64-normalized-entry` contract after
+UEFI boot services have ended. It proves normalized EL1, owned higher-half
+state, identity removal, and the first Core C++ witness; it is not an ordinary
+shutdown facility.
 
 ### Interactive tests
 

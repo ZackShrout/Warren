@@ -19,15 +19,31 @@ namespace {
     };
 
     CHAR16 begin_marker[]{
+#if defined(WARREN_QEMU_HANDOFF_FAULT_BOOT_MAGIC) || \
+    defined(WARREN_QEMU_HANDOFF_FAULT_POST_EXIT)
         'W', 'A', 'R', 'R', 'E', 'N', '_', 'T', 'E', 'S', 'T', ':', '1', ':',
         'B', 'E', 'G', 'I', 'N', ':', 'b', 'u', 'r', 'r', 'o', 'w', '-', 'f',
         'i', 'r', 's', 't', '-', 'e', 'n', 't', 'r', 'y', '\r', '\n', 0
+#else
+        'W', 'A', 'R', 'R', 'E', 'N', '_', 'T', 'E', 'S', 'T', ':', '1', ':',
+        'B', 'E', 'G', 'I', 'N', ':', 'a', 'a', 'r', 'c', 'h', '6', '4', '-',
+        'n', 'o', 'r', 'm', 'a', 'l', 'i', 'z', 'e', 'd', '-', 'e', 'n', 't',
+        'r', 'y', '\r', '\n', 0
+#endif
     };
 
     CHAR16 failure_marker[]{
+#if defined(WARREN_QEMU_HANDOFF_FAULT_BOOT_MAGIC) || \
+    defined(WARREN_QEMU_HANDOFF_FAULT_POST_EXIT)
         'W', 'A', 'R', 'R', 'E', 'N', '_', 'T', 'E', 'S', 'T', ':', '1', ':',
         'F', 'A', 'I', 'L', ':', 'b', 'u', 'r', 'r', 'o', 'w', '-', 'f', 'i',
         'r', 's', 't', '-', 'e', 'n', 't', 'r', 'y', ':', '6', '4', '\r', '\n', 0
+#else
+        'W', 'A', 'R', 'R', 'E', 'N', '_', 'T', 'E', 'S', 'T', ':', '1', ':',
+        'F', 'A', 'I', 'L', ':', 'a', 'a', 'r', 'c', 'h', '6', '4', '-', 'n',
+        'o', 'r', 'm', 'a', 'l', 'i', 'z', 'e', 'd', '-', 'e', 'n', 't', 'r',
+        'y', ':', '6', '4', '\r', '\n', 0
+#endif
     };
 
     [[nodiscard]] EFI_STATUS write_ascii(EFI_SYSTEM_TABLE& system_table, const char* text) noexcept

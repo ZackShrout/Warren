@@ -55,6 +55,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/plans/burrow-image.md
     docs/plans/burrow-loader.md
     docs/plans/burrow-first-entry.md
+    docs/plans/aarch64-normalized-entry.md
     docs/plans/phase-0-contracts.md
     docs/adr/0000-template.md
     docs/adr/0001-reference-target.md
@@ -75,12 +76,24 @@ add_custom_target(WarrenPlanning SOURCES
     docs/adr/0016-initial-aarch64-virtual-memory-layout.md
     docs/specifications/AARCH64_BURROW_IMAGE.md
     docs/specifications/AARCH64_LOADER_HANDOFF.md
+    docs/specifications/AARCH64_NORMALIZED_ENTRY.md
     docs/specifications/BOOT_INFORMATION_V1.md
     docs/specifications/TEST_RESULT_PROTOCOL_V1.md
     boot/Platform/QemuVirt/PostExitTestResult.s
     kernel/linker/AArch64/burrow.ld
-    kernel/src/Arch/AArch64/Entry.s
+    kernel/include/burrow/Core/TransitionPlan.h
+    kernel/include/burrow/Core/KernelEntry.h
+    kernel/src/Arch/AArch64/EmergencyVectors.S
+    kernel/src/Arch/AArch64/Entry.S
+    kernel/src/Arch/AArch64/Normalization.S
+    kernel/src/Arch/AArch64/Activation.S
+    kernel/include/burrow/Arch/AArch64/PageTables.h
+    kernel/src/Arch/AArch64/PageTables.cpp
+    kernel/src/Arch/AArch64/TablePreparation.cpp
+    kernel/src/Arch/AArch64/TransitionPreparation.cpp
     kernel/src/Core/ImageLayout.cpp
+    kernel/src/Core/KernelEntry.cpp
+    kernel/src/Core/TransitionPlan.cpp
     kernel/src/Platform/QemuVirt/TestResult.S
     third_party/README.md
     third_party/edk2/LICENSE
@@ -101,7 +114,13 @@ add_custom_target(WarrenPlanning SOURCES
     tools/warren_test_protocol.py
     tests/host/BurrowImageVerifierTests.py
     tests/host/EspBuilderTests.py
+    tests/host/TransitionPlanTests.cpp
+    tests/host/AArch64PageTableTests.cpp
+    tests/host/KernelEntryTests.cpp
+    tests/abi/KernelEntryAbiCheck.c
+    tests/abi/KernelEntryAbiCheck.cpp
     tests/host/WarrenTestProtocolTests.py
+    tests/host/UefiSmokeHarnessTests.py
 )
 
 if(WARREN_BUILD_ENVIRONMENT STREQUAL "system")
@@ -181,6 +200,24 @@ target_compile_options(WarrenBootInformationAbiCheck PRIVATE
     -Werror
 )
 
+add_library(WarrenKernelEntryAbiCheck OBJECT
+    tests/abi/KernelEntryAbiCheck.c
+    tests/abi/KernelEntryAbiCheck.cpp
+)
+target_include_directories(WarrenKernelEntryAbiCheck PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+)
+target_compile_options(WarrenKernelEntryAbiCheck PRIVATE
+    -ffreestanding
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
+    $<$<COMPILE_LANGUAGE:CXX>:-nostdinc++>
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Werror
+)
+
 if(NOT CMAKE_CROSSCOMPILING)
     find_package(Python3 3.14...<3.15 REQUIRED COMPONENTS Interpreter)
 
@@ -200,6 +237,128 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenBootInformationProtocol
         COMMAND WarrenBootInformationTests
+    )
+
+    add_library(WarrenTransitionPlan OBJECT
+        kernel/include/burrow/Core/TransitionPlan.h
+        kernel/src/Core/TransitionPlan.cpp
+    )
+    target_include_directories(WarrenTransitionPlan PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
+    )
+    target_compile_options(WarrenTransitionPlan PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_executable(WarrenTransitionPlanTests
+        tests/host/TransitionPlanTests.cpp
+    )
+    target_link_libraries(WarrenTransitionPlanTests PRIVATE
+        WarrenTransitionPlan
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenTransitionPlanTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenTransitionPlan
+        COMMAND WarrenTransitionPlanTests
+    )
+
+    add_library(WarrenAArch64PageTables OBJECT
+        kernel/include/burrow/Arch/AArch64/PageTables.h
+        kernel/src/Arch/AArch64/PageTables.cpp
+    )
+    target_include_directories(WarrenAArch64PageTables PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
+    )
+    target_compile_options(WarrenAArch64PageTables PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_executable(WarrenAArch64PageTableTests
+        tests/host/AArch64PageTableTests.cpp
+    )
+    target_link_libraries(WarrenAArch64PageTableTests PRIVATE
+        WarrenAArch64PageTables
+    )
+    target_compile_options(WarrenAArch64PageTableTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenAArch64PageTables
+        COMMAND WarrenAArch64PageTableTests
+    )
+
+    add_library(WarrenKernelEntry OBJECT
+        kernel/include/burrow/Core/KernelEntry.h
+        kernel/src/Core/KernelEntry.cpp
+    )
+    target_include_directories(WarrenKernelEntry PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
+    )
+    target_compile_options(WarrenKernelEntry PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_executable(WarrenKernelEntryTests
+        tests/host/KernelEntryTests.cpp
+    )
+    target_link_libraries(WarrenKernelEntryTests PRIVATE
+        WarrenKernelEntry
+        WarrenBootProtocol
+    )
+    target_compile_options(WarrenKernelEntryTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenKernelEntry
+        COMMAND WarrenKernelEntryTests
     )
 
     add_executable(WarrenBootInformationProducerTests
@@ -303,6 +462,12 @@ if(NOT CMAKE_CROSSCOMPILING)
     )
 
     add_test(
+        NAME WarrenUefiSmokeHarness
+        COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/host/UefiSmokeHarnessTests.py"
+    )
+
+    add_test(
         NAME WarrenBurrowImageVerifier
         COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/host/BurrowImageVerifierTests.py"
@@ -365,7 +530,7 @@ endif()
 
 if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     option(WARREN_ENABLE_QEMU_TEST_RESULT
-        "Enable Burrow's QEMU-only first-entry result transport"
+        "Enable Burrow's QEMU-only normalized-entry result transport"
         OFF
     )
     set(WARREN_QEMU_TEST_RESULT_MODE "pass" CACHE STRING
@@ -374,6 +539,26 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     set_property(CACHE WARREN_QEMU_TEST_RESULT_MODE PROPERTY STRINGS
         pass fail panic
     )
+    set(WARREN_AARCH64_ENTRY_FAULT "none" CACHE STRING
+        "Trusted QEMU-only AArch64 entry fault fixture"
+    )
+    set_property(CACHE WARREN_AARCH64_ENTRY_FAULT PROPERTY STRINGS
+        none
+        emergency
+        common-el1-vector
+        unsupported-feature
+        common-el1
+        planning
+        tables
+        activation
+        lower-guard
+        upper-guard
+        text-write
+        data-execute
+        stale-identity
+        identity-failure
+        kernel-entry
+    )
 
     if(WARREN_ENABLE_QEMU_TEST_RESULT AND
        NOT WARREN_QEMU_TEST_RESULT_MODE MATCHES "^(pass|fail|panic)$")
@@ -381,10 +566,36 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             "WARREN_QEMU_TEST_RESULT_MODE must be pass, fail, or panic"
         )
     endif()
+    if(NOT WARREN_AARCH64_ENTRY_FAULT MATCHES
+       "^(none|emergency|common-el1-vector|unsupported-feature|common-el1|planning|tables|activation|lower-guard|upper-guard|text-write|data-execute|stale-identity|identity-failure|kernel-entry)$")
+        message(FATAL_ERROR
+            "WARREN_AARCH64_ENTRY_FAULT has an unsupported value"
+        )
+    endif()
+    if(NOT WARREN_AARCH64_ENTRY_FAULT STREQUAL "none" AND
+       NOT WARREN_ENABLE_QEMU_TEST_RESULT)
+        message(FATAL_ERROR
+            "AArch64 entry fault injection requires QEMU test-result support"
+        )
+    endif()
 
     add_library(BurrowImageObjects OBJECT
-        kernel/src/Arch/AArch64/Entry.s
+        kernel/src/Arch/AArch64/Activation.S
+        kernel/src/Arch/AArch64/EmergencyVectors.S
+        kernel/src/Arch/AArch64/Entry.S
+        kernel/src/Arch/AArch64/Normalization.S
+        kernel/src/Arch/AArch64/PageTables.cpp
+        kernel/src/Arch/AArch64/TablePreparation.cpp
+        kernel/src/Arch/AArch64/TransitionPreparation.cpp
         kernel/src/Core/ImageLayout.cpp
+        kernel/src/Core/KernelEntry.cpp
+        kernel/src/Core/TransitionPlan.cpp
+        sdk/src/boot/BootInformationValidation.cpp
+    )
+    add_dependencies(BurrowImageObjects WarrenKernelEntryAbiCheck)
+    target_include_directories(BurrowImageObjects PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
     )
     if(WARREN_ENABLE_QEMU_TEST_RESULT)
         target_sources(BurrowImageObjects PRIVATE
@@ -398,9 +609,13 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         set(_burrow_result_mode_upper "PASS")
         set(_burrow_verifier_result_arguments)
     endif()
-    set_source_files_properties(kernel/src/Arch/AArch64/Entry.s PROPERTIES
-        COMPILE_OPTIONS "-x;assembler-with-cpp"
-    )
+    if(NOT WARREN_AARCH64_ENTRY_FAULT STREQUAL "none")
+        set(_burrow_verifier_fault_arguments
+            --aarch64-entry-fault "${WARREN_AARCH64_ENTRY_FAULT}"
+        )
+    else()
+        set(_burrow_verifier_fault_arguments)
+    endif()
     target_compile_options(BurrowImageObjects PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:-ffreestanding>
         $<$<COMPILE_LANGUAGE:CXX>:-fpie>
@@ -417,9 +632,10 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
         $<$<COMPILE_LANGUAGE:CXX>:-fno-threadsafe-statics>
         $<$<COMPILE_LANGUAGE:CXX>:-fno-use-cxa-atexit>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-builtin>
+        $<$<COMPILE_LANGUAGE:CXX>:-mgeneral-regs-only>
         $<$<COMPILE_LANGUAGE:CXX>:-fno-unwind-tables>
         $<$<COMPILE_LANGUAGE:CXX>:-fno-asynchronous-unwind-tables>
-        $<$<COMPILE_LANGUAGE:CXX>:-nostdinc>
         $<$<COMPILE_LANGUAGE:CXX>:-nostdinc++>
         $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-O0>
         $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-gdwarf-5>
@@ -433,6 +649,14 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>>:WARREN_ENABLE_QEMU_TEST_RESULT=1>
         $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<BOOL:${WARREN_ENABLE_QEMU_TEST_RESULT}>>:WARREN_QEMU_TEST_RESULT_${_burrow_result_mode_upper}=1>
     )
+    if(NOT WARREN_AARCH64_ENTRY_FAULT STREQUAL "none")
+        string(TOUPPER "${WARREN_AARCH64_ENTRY_FAULT}" _burrow_entry_fault_upper)
+        string(REPLACE "-" "_" _burrow_entry_fault_upper
+            "${_burrow_entry_fault_upper}")
+        target_compile_definitions(BurrowImageObjects PRIVATE
+            $<$<COMPILE_LANGUAGE:ASM>:WARREN_AARCH64_FAULT_INJECT_${_burrow_entry_fault_upper}=1>
+        )
+    endif()
 
     set(_burrow_artifact_directory "${CMAKE_CURRENT_BINARY_DIR}/artifacts")
     set(_burrow_symbol_image "${_burrow_artifact_directory}/burrow.elf")
@@ -472,6 +696,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
             --objdump "${CMAKE_OBJDUMP}"
             ${_burrow_verifier_result_arguments}
+            ${_burrow_verifier_fault_arguments}
             --image "${_burrow_symbol_image}"
         COMMAND "${CMAKE_OBJCOPY}"
             --strip-debug
@@ -481,6 +706,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
             --objdump "${CMAKE_OBJDUMP}"
             ${_burrow_verifier_result_arguments}
+            ${_burrow_verifier_fault_arguments}
             --runtime
             --image "${_burrow_runtime_image}"
             --reference-image "${_burrow_symbol_image}"
@@ -516,6 +742,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     unset(_burrow_runtime_image)
     unset(_burrow_map)
     unset(_burrow_result_mode_upper)
+    unset(_burrow_verifier_fault_arguments)
     unset(_burrow_verifier_result_arguments)
 endif()
 
