@@ -231,6 +231,10 @@ namespace
         passed &= expect_u64("stack pages", plan.early_stack_page_count.value, 16);
         passed &= expect_u64("table backing", plan.page_table_physical_start.value, k_usable_physical + 0x11000);
         passed &= expect_u64("table pages", plan.page_table_page_count.value, 111);
+        passed &= expect_u64("retained boot pages", plan.boot_information_page_count.value, 1);
+        passed &= expect_u64("retained bootstrap pages", plan.bootstrap_stack_page_count.value, 16);
+        passed &= expect_u64("retained console", plan.console_physical_address.value,
+                             burrow::core::k_reference_pl011_physical_address);
         passed &= expect_u64("stack virtual start", plan.early_stack_virtual_start.value,
                              burrow::core::k_early_stack_virtual_start);
         passed &= expect_u64("stack virtual top", plan.early_stack_virtual_top.value,

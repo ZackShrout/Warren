@@ -1,6 +1,6 @@
 # Warren Architecture
 
-**Status:** Phase 0 contracts accepted; Phase 1 common-EL1 normalization
+**Status:** Phase 0 contracts accepted; Phase 1 owned table construction
 implemented
 
 **Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
@@ -14,8 +14,10 @@ emergency vector table at inherited EL1 or EL2. Its first freestanding C++
 boundary performs complete boot-information validation and immutable transition
 planning. Architecture assembly then removes inherited firmware translation
 and cache state and converges both inherited EL1 and EL2 routes at one physical,
-MMU-off EL1h label. Burrow still stops before owned translation tables or
-architecture-neutral kernel entry. Stable decisions are
+MMU-off EL1h label. The common path builds and independently audits the bounded
+owned translation hierarchy without activating it. Burrow still stops before
+owned-table activation, higher-half transfer, or architecture-neutral kernel
+entry. Stable decisions are
 recorded in `docs/adr/`, and exact subordinate formats live in
 `docs/specifications/`.
 

@@ -22,8 +22,11 @@ boot-information validator and deterministically reserves its immutable
 the inherited firmware translation and cache state: the inherited EL1 route
 stays at EL1, while the inherited EL2 route performs the reviewed one-way
 `ERET`; both reach the same physical, MMU-off EL1h state with masked DAIF. The
-current proof deliberately stops before owned mappings, stable higher-half
-vectors, or architecture-neutral kernel C++ entry.
+common path validates the implemented 4 KiB granule and physical-address width,
+then materializes and independently audits bounded four-level TTBR0/TTBR1
+hierarchies in the reserved arena. The current proof deliberately stops before
+activating those mappings, installing stable higher-half vectors, or entering
+architecture-neutral kernel C++.
 
 ## Project Vocabulary
 

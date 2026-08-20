@@ -1654,6 +1654,8 @@ def verify_normalization_disassembly(
             "burrow_aarch64_emergency_vectors",
             "mov x1, #0x3",
             "str x1, [x0]",
+            "mrs x0, ID_AA64MMFR0_EL1",
+            "burrow_aarch64_build_transition_tables",
             "mov w0, #0x4c",
             "msr DAIFSet, #0xf",
             "wfe",
@@ -1679,6 +1681,40 @@ def verify_normalization_disassembly(
         raise VerificationError("normalization has an unexpected QEMU result branch")
     if len(failure_branches) != expected_transport_count:
         raise VerificationError("normalization has an unexpected QEMU failure branch")
+
+
+def verify_table_preparation_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble-symbols=burrow_aarch64_build_transition_tables",
+            "--demangle",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble table preparation")
+
+    output = re.sub(r"\s+", " ", result.stdout)
+    for fragment in (
+        "burrow::arch::aarch64::build_page_tables",
+        "burrow::arch::aarch64::audit_page_tables",
+    ):
+        if fragment not in output:
+            raise VerificationError(f"table preparation is missing {fragment}")
+    for value, name in (("4b", "architecture"), ("4e", "table")):
+        if re.search(rf"\bmov\s+w[0-9]+,\s*#0x{value}\b", result.stdout) is None:
+            raise VerificationError(
+                f"table preparation is missing the {name} failure code"
+            )
 
 
 def verify_qemu_result_disassembly(
@@ -1870,6 +1906,10 @@ def main() -> int:
             arguments.objdump,
             arguments.image,
             qemu_test_result=arguments.qemu_test_result,
+        )
+        verify_table_preparation_disassembly(
+            arguments.objdump,
+            arguments.image,
         )
         verify_qemu_result_disassembly(
             arguments.objdump,

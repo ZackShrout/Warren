@@ -418,7 +418,7 @@ add_test(
         --esp "${_warren_esp}"
         --initial-el el1
         --expected-test burrow-first-entry
-        --require-output "BURROW_COMMON_EL1:initial=EL1:normalized=EL1"
+        --require-output "BURROW_COMMON_EL1:initial=EL1:normalized=EL1:tables=audited"
 )
 set_tests_properties(WarrenSystemBurrowFirstEntryEl1 PROPERTIES TIMEOUT 40)
 
@@ -432,7 +432,7 @@ add_test(
         --esp "${_warren_esp}"
         --initial-el el2
         --expected-test burrow-first-entry
-        --require-output "BURROW_COMMON_EL1:initial=EL2:normalized=EL1"
+        --require-output "BURROW_COMMON_EL1:initial=EL2:normalized=EL1:tables=audited"
 )
 set_tests_properties(WarrenSystemBurrowFirstEntryEl2 PROPERTIES TIMEOUT 40)
 

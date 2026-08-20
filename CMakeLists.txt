@@ -85,6 +85,9 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/src/Arch/AArch64/EmergencyVectors.S
     kernel/src/Arch/AArch64/Entry.S
     kernel/src/Arch/AArch64/Normalization.S
+    kernel/include/burrow/Arch/AArch64/PageTables.h
+    kernel/src/Arch/AArch64/PageTables.cpp
+    kernel/src/Arch/AArch64/TablePreparation.cpp
     kernel/src/Arch/AArch64/TransitionPreparation.cpp
     kernel/src/Core/ImageLayout.cpp
     kernel/src/Core/TransitionPlan.cpp
@@ -109,6 +112,7 @@ add_custom_target(WarrenPlanning SOURCES
     tests/host/BurrowImageVerifierTests.py
     tests/host/EspBuilderTests.py
     tests/host/TransitionPlanTests.cpp
+    tests/host/AArch64PageTableTests.cpp
     tests/host/WarrenTestProtocolTests.py
     tests/host/UefiSmokeHarnessTests.py
 )
@@ -250,6 +254,46 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenTransitionPlan
         COMMAND WarrenTransitionPlanTests
+    )
+
+    add_library(WarrenAArch64PageTables OBJECT
+        kernel/include/burrow/Arch/AArch64/PageTables.h
+        kernel/src/Arch/AArch64/PageTables.cpp
+    )
+    target_include_directories(WarrenAArch64PageTables PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
+    )
+    target_compile_options(WarrenAArch64PageTables PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_executable(WarrenAArch64PageTableTests
+        tests/host/AArch64PageTableTests.cpp
+    )
+    target_link_libraries(WarrenAArch64PageTableTests PRIVATE
+        WarrenAArch64PageTables
+    )
+    target_compile_options(WarrenAArch64PageTableTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenAArch64PageTables
+        COMMAND WarrenAArch64PageTableTests
     )
 
     add_executable(WarrenBootInformationProducerTests
@@ -459,6 +503,8 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         kernel/src/Arch/AArch64/EmergencyVectors.S
         kernel/src/Arch/AArch64/Entry.S
         kernel/src/Arch/AArch64/Normalization.S
+        kernel/src/Arch/AArch64/PageTables.cpp
+        kernel/src/Arch/AArch64/TablePreparation.cpp
         kernel/src/Arch/AArch64/TransitionPreparation.cpp
         kernel/src/Core/ImageLayout.cpp
         kernel/src/Core/TransitionPlan.cpp

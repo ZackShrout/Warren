@@ -51,10 +51,12 @@ shared validator and one-shot transition planner before consuming the validated
 PL011 descriptor. It then cleans and invalidates implemented data caches,
 disables inherited translation and caches, preserves the EL1 route or descends
 from EL2 with the exact normalized-entry register program, proves the common
-physical EL1h state, and enters a masked wait. The terminal reporter captures
+physical EL1h state, validates the architectural translation features, and
+builds and independently audits the fixed-capacity table hierarchy before
+entering a masked wait. The terminal reporter captures
 either EL1 or EL2 architectural exception state without using the stack. The
-image imports no runtime and does not yet build owned translation tables or call
-the architecture-neutral kernel entry.
+image imports no runtime and does not yet activate the owned tables or call the
+architecture-neutral kernel entry.
 
 ## 3. Load Image
 

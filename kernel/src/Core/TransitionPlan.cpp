@@ -84,6 +84,11 @@ namespace burrow::core {
             plan.early_stack_page_count = { 0 };
             plan.page_table_physical_start = { 0 };
             plan.page_table_page_count = { 0 };
+            plan.boot_information_physical_start = { 0 };
+            plan.boot_information_page_count = { 0 };
+            plan.bootstrap_stack_physical_start = { 0 };
+            plan.bootstrap_stack_page_count = { 0 };
+            plan.console_physical_address = { 0 };
             plan.early_stack_virtual_start = { 0 };
             plan.early_stack_virtual_top = { 0 };
         }
@@ -102,6 +107,11 @@ namespace burrow::core {
             destination.early_stack_page_count = source.early_stack_page_count;
             destination.page_table_physical_start = source.page_table_physical_start;
             destination.page_table_page_count = source.page_table_page_count;
+            destination.boot_information_physical_start = source.boot_information_physical_start;
+            destination.boot_information_page_count = source.boot_information_page_count;
+            destination.bootstrap_stack_physical_start = source.bootstrap_stack_physical_start;
+            destination.bootstrap_stack_page_count = source.bootstrap_stack_page_count;
+            destination.console_physical_address = source.console_physical_address;
             destination.early_stack_virtual_start = source.early_stack_virtual_start;
             destination.early_stack_virtual_top = source.early_stack_virtual_top;
         }
@@ -502,6 +512,14 @@ namespace burrow::core {
         };
         if (boot_information_pages.end > k_direct_map_physical_limit)
             return transition_plan_error_t::physical_range_overflow;
+        const warren_boot_information_t& object{ *view.object };
+        candidate.boot_information_physical_start = { boot_information_pages.begin };
+        candidate.boot_information_page_count = { boot_information_page_count };
+        candidate.bootstrap_stack_physical_start = { object.bootstrap_stack_physical_start };
+        candidate.bootstrap_stack_page_count = {
+            object.bootstrap_stack_size / k_transition_page_size
+        };
+        candidate.console_physical_address = view.console_physical_address;
 
         result = append_mapping(candidate, boot_information_pages.begin, boot_information_pages.begin,
                                 boot_information_page_count, transition_memory_type_t::normal,
@@ -512,8 +530,6 @@ namespace burrow::core {
                                 boot_information_page_count, transition_memory_type_t::normal,
                                 k_transition_permission_read, 0);
         if (result != transition_plan_error_t::success) return result;
-
-        const warren_boot_information_t& object{ *view.object };
         result = append_mapping(candidate, object.bootstrap_stack_physical_start,
                                 object.bootstrap_stack_physical_start,
                                 object.bootstrap_stack_size / k_transition_page_size,

@@ -110,6 +110,11 @@ namespace burrow::core {
         page_count_t early_stack_page_count;
         physical_address_t page_table_physical_start;
         page_count_t page_table_page_count;
+        physical_address_t boot_information_physical_start;
+        page_count_t boot_information_page_count;
+        physical_address_t bootstrap_stack_physical_start;
+        page_count_t bootstrap_stack_page_count;
+        physical_address_t console_physical_address;
         virtual_address_t early_stack_virtual_start;
         virtual_address_t early_stack_virtual_top;
     };

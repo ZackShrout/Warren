@@ -129,6 +129,10 @@ burrow_aarch64_common_el1:
     mov x1, #3
     str x1, [x0]
 
+    mrs x0, ID_AA64MMFR0_EL1
+    bl burrow_aarch64_build_transition_tables
+    cbnz w0, .Lreport_normalization_failure
+
     adrp x25, .Lcommon_el1_diagnostic_prefix
     add x25, x25, :lo12:.Lcommon_el1_diagnostic_prefix
     bl .Lnormalization_write_string
@@ -150,6 +154,7 @@ burrow_aarch64_common_el1:
 
 .Lnormalization_failure:
     mov w0, #NORMALIZATION_FAILURE
+.Lreport_normalization_failure:
 #if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
     b burrow_qemu_test_failure
 #endif
@@ -236,6 +241,6 @@ burrow_aarch64_common_el1:
 .Lcommon_el1_diagnostic_prefix:
     .asciz "BURROW_COMMON_EL1:initial=EL"
 .Lcommon_el1_diagnostic_suffix:
-    .asciz ":normalized=EL1\r\n"
+    .asciz ":normalized=EL1:tables=audited\r\n"
 
 .section .note.GNU-stack, "", %progbits
