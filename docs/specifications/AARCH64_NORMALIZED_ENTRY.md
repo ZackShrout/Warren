@@ -1,8 +1,7 @@
 # Warren AArch64 Normalized Entry
 
-**Status:** Branch implementation contract under ADR-0002, ADR-0007,
-ADR-0011, and ADR-0016; mainline path and the complete target-fault matrix are
-implemented; final branch reconciliation remains
+**Status:** Implemented subordinate contract under ADR-0002, ADR-0007,
+ADR-0011, and ADR-0016
 
 **Target:** ARMv8.0-A, non-secure AArch64 EL1 or EL2, 4 KiB pages
 

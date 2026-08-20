@@ -1,6 +1,6 @@
 # AArch64 Normalized Entry Branch Plan
 
-- **Status:** Ready
+- **Status:** Complete — verified 2026-08-20
 - **Branch:** `feature/aarch64-normalized-entry`
 - **Base:** `main` after integration of `feature/burrow-first-entry`
 - **Roadmap phase:** Phase 1 — First Light
@@ -8,7 +8,24 @@
   Burrow-owned EL1 environment, remove firmware identity mappings, and reach a
   bounded architecture-neutral C++ entry function.
 
-## Why This Branch Is Next
+## Implementation Outcome
+
+The completed branch accepts the live UEFI handoff at either EL1 or EL2,
+normalizes both routes into one owned EL1 environment, and calls the fixed-ABI
+architecture-neutral C++ witness only after the higher-half transfer and TTBR0
+removal. The implementation includes the complete v1 object validator, a
+deterministic one-shot transition planner, independently audited four-level
+translation tables, inherited and stable vector tables, a guarded owned stack,
+and bounded direct-PL011 terminal reporting.
+
+Fresh Debug and Release verification covers both production entry routes, all
+assigned normalized-entry failures (75 through 81), inherited EL1/EL2 and
+common/stable EL1 vector traps, both stack guards, text-write and data-execute
+permissions, and the removed identity alias. Focused ordinary-artifact checks
+also prove that fault injection and QEMU result transport are absent when test
+support is disabled.
+
+## Why This Branch Followed First Entry
 
 The completed first-entry feature proves that Warren can leave UEFI boot
 services, transfer through the reviewed loader boundary, and execute Burrow

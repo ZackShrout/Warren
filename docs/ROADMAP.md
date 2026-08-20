@@ -39,28 +39,31 @@ The runway is reassessed after every merge.
    pretending the full console or normalized kernel entry is complete. The
    completed plan is in
    [`plans/burrow-first-entry.md`](plans/burrow-first-entry.md).
-3. **Next — `feature/aarch64-normalized-entry`: reach kernel C++ at EL1.** Add
-   emergency vectors, supported EL1/EL2 normalization, an owned transition stack
-   and early page tables, then call architecture-neutral Burrow entry under the
-   accepted state contract. The ready plan is in
+3. **Complete — `feature/aarch64-normalized-entry`: reach kernel C++ at EL1.**
+   Both live UEFI entry routes now converge on owned EL1 translation, stable
+   vectors, a guarded stack, an empty TTBR0, and the fixed-ABI
+   architecture-neutral C++ witness. The completed plan is in
    [`plans/aarch64-normalized-entry.md`](plans/aarch64-normalized-entry.md).
 
 The completed `foundation/phase-0-contracts`, `feature/burrow-image`,
-`feature/burrow-loader`, and `feature/burrow-first-entry` plans remain available
+`feature/burrow-loader`, `feature/burrow-first-entry`, and
+`feature/aarch64-normalized-entry` plans remain available
 in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md),
 [`plans/burrow-image.md`](plans/burrow-image.md),
 [`plans/burrow-loader.md`](plans/burrow-loader.md), and
-[`plans/burrow-first-entry.md`](plans/burrow-first-entry.md). The implemented
+[`plans/burrow-first-entry.md`](plans/burrow-first-entry.md), and
+[`plans/aarch64-normalized-entry.md`](plans/aarch64-normalized-entry.md). The implemented
 subordinate contracts are in
 [`specifications/AARCH64_BURROW_IMAGE.md`](specifications/AARCH64_BURROW_IMAGE.md),
+[`specifications/AARCH64_NORMALIZED_ENTRY.md`](specifications/AARCH64_NORMALIZED_ENTRY.md),
 [`specifications/AARCH64_LOADER_HANDOFF.md`](specifications/AARCH64_LOADER_HANDOFF.md),
 [`specifications/BOOT_INFORMATION_V1.md`](specifications/BOOT_INFORMATION_V1.md),
 and
 [`specifications/TEST_RESULT_PROTOCOL_V1.md`](specifications/TEST_RESULT_PROTOCOL_V1.md).
 
 Likely later slices include the allocation-free PL011 console, complete exception
-reporting, and the ARM generic timer. Their exact branch boundaries depend on
-what the entry work demonstrates.
+reporting, and the ARM generic timer. Their exact branch boundaries will be
+chosen from the completed normalized-entry foundation.
 
 ## Phase 0 — Foundation
 
@@ -143,8 +146,10 @@ Completed Phase 1 evidence:
   reaches its generic C++ witness, and reports an agreed two-channel
   `aarch64-normalized-entry` result; and
 - target failure fixtures for malformed finalized header and console data,
-  loader post-exit containment, and isolated pass/fail/panic transport, with
-  test machinery excluded from ordinary images.
+  loader post-exit containment, inherited and common/stable vector traps, every
+  normalized-entry failure code from 75 through 81, both stack guards, image
+  permissions, the removed identity alias, and isolated pass/fail/panic
+  transport, with test machinery excluded from ordinary images.
 
 Exit demonstration:
 

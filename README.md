@@ -70,7 +70,7 @@ trustworthy platform on which those things can eventually be built.
 - [`docs/FILESYSTEM.md`](docs/FILESYSTEM.md) — staged storage plan and criteria for the eventual system filesystem
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural-decision-record policy and decision index
 - [`docs/specifications/AARCH64_BURROW_IMAGE.md`](docs/specifications/AARCH64_BURROW_IMAGE.md) — implemented Burrow ELF and packaging contract
-- [`docs/specifications/AARCH64_NORMALIZED_ENTRY.md`](docs/specifications/AARCH64_NORMALIZED_ENTRY.md) — register, mapping, and generic-entry contract for the current branch
+- [`docs/specifications/AARCH64_NORMALIZED_ENTRY.md`](docs/specifications/AARCH64_NORMALIZED_ENTRY.md) — implemented register, mapping, and generic-entry contract
 - [`CODE_STANDARDS.md`](CODE_STANDARDS.md) — Warren-specific C++ and assembly standards
 
 ## Working Agreement
