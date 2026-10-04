@@ -73,9 +73,32 @@ emit one bounded line containing stage, vector number, current EL, `ESR_ELx`,
 exception enter a separate silent wait instead of recursing. Exceptions never
 resume during normalized entry.
 
-The stable table has the same 16-slot geometry and reporting contract. Its
-address is the stable image alias and `VBAR_EL1` is changed to that alias only
-after the high branch succeeds.
+The stable table has the same 16-slot geometry but a stronger owned-state
+contract. Its address is the stable image alias and `VBAR_EL1` is changed to
+that alias only after the high branch succeeds. Once the owned stack is active,
+each stable slot allocates the fixed exception frame, preserves x0 and x1
+before classification, and branches to the common full-frame reporter.
+
+The stable frame ABI is version 1, exactly 320 bytes, and 16-byte stack
+aligned. It contains the ABI major, structure size, vector, reserved zero,
+x0 through x30, interrupted SP, last completed transition stage, current EL,
+`ESR_EL1`, `ELR_EL1`, `FAR_EL1`, and `SPSR_EL1`, in that order. The frame
+offsets are checked from both C and C++ translation units. The common entry
+saves every GPR before using it, masks DAIF, claims the same reporter-active
+word used by the emergency path, and never returns or clears that word.
+
+QEMU-virt constructs a bounded PL011 writer at the already audited stable MMIO
+alias and AArch64 formatting emits one allocation-free line:
+
+```text
+BURROW_EXCEPTION_V1:stage=N:vector=N:el=1:esr=0x...:elr=0x...:far=0x...:spsr=0x...:sp=0x...:x0=0x...:...:x30=0x...
+```
+
+Every hexadecimal value has exactly 16 uppercase digits. Invalid frames,
+console timeouts, and nested exceptions enter a DAIF-masked terminal wait.
+There is no recovery or `ERET`. Because complete capture uses the owned stack,
+pre-normalization faults continue to use the separate stackless emergency
+reporter.
 
 ## 4. Complete Object Validation
 
@@ -347,7 +370,8 @@ evidence is a protocol failure; the harness never substitutes direct entry.
 Debug and Release verification must locate and check, from the linked objects:
 
 - capture before external access and both aligned VBAR writes;
-- all 16 correctly spaced slots in both vector tables;
+- all 16 correctly spaced slots in both vector tables, including exact stable
+  frame allocation, x0/x1 preservation, and stable-reporter branches;
 - an EL1 branch with no EL2 register access and the exact EL2 register program;
 - cache teardown, `ERET`, and the common physical EL1 label;
 - exact MAIR/TCR/SCTLR values and ordered TTBR/TLBI/barrier operations;
@@ -358,13 +382,16 @@ Debug and Release verification must locate and check, from the linked objects:
 
 Host tests independently exercise the validator consumer, arena planner, table
 walker, activation preflight, context ABI, generic entry witness, byte-writer,
-PL011 driver, and QEMU-virt selection. Live tests
+PL011 driver, QEMU-virt selection, complete exception formatting, and the
+exception-frame ABI. Live tests
 cover both initial exception levels, emergency faults at inherited EL1/EL2, a
 common-EL1 fault before table activation, every assigned failure from 75
 through 81, and stable-vector faults for both guards, text-write, data-execute,
 and stale-identity probes. Stable protection probes require the exact stage-8
-ESR class and, for both guards, the exact fault address. Both successful routes
-also require the exact reusable-console diagnostic before normalized success.
+ESR class and, for both guards, the exact fault address. A post-C++ breakpoint
+requires stage 9, the exact BRK syndrome, its preserved x15 sentinel, x30, and
+`PANIC`/4. Both successful routes also require the exact reusable-console
+diagnostic before normalized success.
 
 ## 13. Architecture References
 

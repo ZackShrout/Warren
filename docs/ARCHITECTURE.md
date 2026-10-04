@@ -153,8 +153,12 @@ AArch64 register and stack state. Burrow's first-entry assembly installs the
 matching inherited-EL emergency vectors before variable-size parsing, checks
 the fixed header prefix and PL011 record, records the observed EL and handoff
 state, then continues through normalized EL1, owned translation, higher-half
-transfer, identity removal, and architecture-neutral C++. The terminal vector reporter captures EL1/EL2
-architectural state without using the stack; it is not an exception dispatcher.
+transfer, identity removal, and architecture-neutral C++. The inherited
+terminal reporter captures EL1/EL2 architectural state without a stack. After
+the owned stack and stable EL1 table are active, the stable reporter preserves
+all 31 GPRs, SP, and syndrome state in a fixed frame and emits the versioned
+record through reusable console code. Both paths are non-returning; neither is
+an exception dispatcher.
 
 ## Source Layout
 

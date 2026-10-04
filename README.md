@@ -31,7 +31,11 @@ TTBR0 with an empty root. It then constructs the fixed 64-byte entry context,
 calls architecture-neutral kernel C++, revalidates the aliased boot object,
 selects the validated QEMU-virt PL011 through platform code, emits a bounded
 allocation-free console diagnostic, writes the retained witness only after the
-complete line succeeds, and accepts only the exact success return.
+complete line succeeds, and accepts only the exact success return. The owned
+stable EL1 vectors now preserve all 31 GPRs, interrupted SP, transition stage,
+and syndrome state in a fixed 320-byte ABI frame, emit a versioned bounded
+exception record through the reusable PL011 path, and terminate without
+recursive recovery.
 
 ## Project Vocabulary
 

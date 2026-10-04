@@ -57,6 +57,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/plans/burrow-first-entry.md
     docs/plans/aarch64-normalized-entry.md
     docs/plans/pl011-console.md
+    docs/plans/aarch64-exception-reporting.md
     docs/plans/phase-0-contracts.md
     docs/adr/0000-template.md
     docs/adr/0001-reference-target.md
@@ -85,10 +86,14 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/linker/AArch64/burrow.ld
     kernel/include/burrow/Core/TransitionPlan.h
     kernel/include/burrow/Core/KernelEntry.h
+    kernel/include/burrow/Arch/AArch64/ExceptionFrame.h
+    kernel/include/burrow/Arch/AArch64/ExceptionReporting.h
     kernel/include/burrow/Drivers/Console.h
     kernel/include/burrow/Drivers/Pl011.h
     kernel/include/burrow/Platform/QemuVirt/Console.h
     kernel/src/Arch/AArch64/EmergencyVectors.S
+    kernel/src/Arch/AArch64/StableVectors.S
+    kernel/src/Arch/AArch64/ExceptionReporting.cpp
     kernel/src/Arch/AArch64/Entry.S
     kernel/src/Arch/AArch64/Normalization.S
     kernel/src/Arch/AArch64/Activation.S
@@ -102,6 +107,7 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/src/Drivers/Console.cpp
     kernel/src/Drivers/Pl011.cpp
     kernel/src/Platform/QemuVirt/Console.cpp
+    kernel/src/Platform/QemuVirt/ExceptionReporting.cpp
     kernel/src/Platform/QemuVirt/KernelEntry.cpp
     kernel/src/Platform/QemuVirt/TestResult.S
     third_party/README.md
@@ -131,6 +137,9 @@ add_custom_target(WarrenPlanning SOURCES
     tests/host/QemuVirtConsoleTests.cpp
     tests/abi/KernelEntryAbiCheck.c
     tests/abi/KernelEntryAbiCheck.cpp
+    tests/abi/AArch64ExceptionFrameAbiCheck.c
+    tests/abi/AArch64ExceptionFrameAbiCheck.cpp
+    tests/host/AArch64ExceptionReportingTests.cpp
     tests/host/WarrenTestProtocolTests.py
     tests/host/UefiSmokeHarnessTests.py
 )
@@ -220,6 +229,24 @@ target_include_directories(WarrenKernelEntryAbiCheck PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
 )
 target_compile_options(WarrenKernelEntryAbiCheck PRIVATE
+    -ffreestanding
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
+    $<$<COMPILE_LANGUAGE:CXX>:-nostdinc++>
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Werror
+)
+
+add_library(WarrenAArch64ExceptionFrameAbiCheck OBJECT
+    tests/abi/AArch64ExceptionFrameAbiCheck.c
+    tests/abi/AArch64ExceptionFrameAbiCheck.cpp
+)
+target_include_directories(WarrenAArch64ExceptionFrameAbiCheck PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+)
+target_compile_options(WarrenAArch64ExceptionFrameAbiCheck PRIVATE
     -ffreestanding
     $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
     $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
@@ -493,6 +520,47 @@ if(NOT CMAKE_CROSSCOMPILING)
         COMMAND WarrenQemuVirtConsoleTests
     )
 
+    add_library(WarrenAArch64ExceptionReporting OBJECT
+        kernel/include/burrow/Arch/AArch64/ExceptionFrame.h
+        kernel/include/burrow/Arch/AArch64/ExceptionReporting.h
+        kernel/src/Arch/AArch64/ExceptionReporting.cpp
+    )
+    target_include_directories(WarrenAArch64ExceptionReporting PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+    )
+    target_compile_options(WarrenAArch64ExceptionReporting PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_executable(WarrenAArch64ExceptionReportingTests
+        tests/host/AArch64ExceptionReportingTests.cpp
+    )
+    target_link_libraries(WarrenAArch64ExceptionReportingTests PRIVATE
+        WarrenAArch64ExceptionReporting
+        WarrenConsole
+    )
+    target_compile_options(WarrenAArch64ExceptionReportingTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenAArch64ExceptionReporting
+        COMMAND WarrenAArch64ExceptionReportingTests
+    )
+
     add_executable(WarrenBootInformationProducerTests
         tests/host/BootInformationProducerTests.cpp
     )
@@ -690,6 +758,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         stale-identity
         identity-failure
         kernel-entry
+        reported-breakpoint
     )
 
     if(WARREN_ENABLE_QEMU_TEST_RESULT AND
@@ -699,7 +768,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         )
     endif()
     if(NOT WARREN_AARCH64_ENTRY_FAULT MATCHES
-       "^(none|emergency|common-el1-vector|unsupported-feature|common-el1|planning|tables|activation|lower-guard|upper-guard|text-write|data-execute|stale-identity|identity-failure|kernel-entry)$")
+       "^(none|emergency|common-el1-vector|unsupported-feature|common-el1|planning|tables|activation|lower-guard|upper-guard|text-write|data-execute|stale-identity|identity-failure|kernel-entry|reported-breakpoint)$")
         message(FATAL_ERROR
             "WARREN_AARCH64_ENTRY_FAULT has an unsupported value"
         )
@@ -714,6 +783,8 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
     add_library(BurrowImageObjects OBJECT
         kernel/src/Arch/AArch64/Activation.S
         kernel/src/Arch/AArch64/EmergencyVectors.S
+        kernel/src/Arch/AArch64/StableVectors.S
+        kernel/src/Arch/AArch64/ExceptionReporting.cpp
         kernel/src/Arch/AArch64/Entry.S
         kernel/src/Arch/AArch64/Normalization.S
         kernel/src/Arch/AArch64/PageTables.cpp
@@ -725,10 +796,14 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         kernel/src/Drivers/Console.cpp
         kernel/src/Drivers/Pl011.cpp
         kernel/src/Platform/QemuVirt/Console.cpp
+        kernel/src/Platform/QemuVirt/ExceptionReporting.cpp
         kernel/src/Platform/QemuVirt/KernelEntry.cpp
         sdk/src/boot/BootInformationValidation.cpp
     )
-    add_dependencies(BurrowImageObjects WarrenKernelEntryAbiCheck)
+    add_dependencies(BurrowImageObjects
+        WarrenKernelEntryAbiCheck
+        WarrenAArch64ExceptionFrameAbiCheck
+    )
     target_include_directories(BurrowImageObjects PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"

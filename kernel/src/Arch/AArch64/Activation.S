@@ -271,6 +271,11 @@ burrow_aarch64_activate_translation:
     mov x1, #9
     str x1, [x0]
 
+#if defined(WARREN_AARCH64_FAULT_INJECT_REPORTED_BREAKPOINT)
+    mov w15, #0xf116
+    brk #0x77a
+#endif
+
     adrp x25, .Lactivation_diagnostic_prefix
     add x25, x25, :lo12:.Lactivation_diagnostic_prefix
     bl .Lactivation_write_string
