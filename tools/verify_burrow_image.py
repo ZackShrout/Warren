@@ -121,6 +121,7 @@ ENTRY_SYMBOL = "burrow_aarch64_entry"
 EMERGENCY_VECTOR_SYMBOL = "burrow_aarch64_emergency_vectors"
 STABLE_VECTOR_SYMBOL = "burrow_aarch64_stable_vectors"
 EMERGENCY_REPORTER_SYMBOL = "burrow_aarch64_emergency_exception"
+STABLE_REPORTER_SYMBOL = "burrow_aarch64_stable_exception"
 NORMALIZATION_SYMBOL = "burrow_aarch64_normalize"
 COMMON_EL1_SYMBOL = "burrow_aarch64_common_el1"
 ACTIVATION_SYMBOL = "burrow_aarch64_activate_translation"
@@ -161,6 +162,7 @@ AARCH64_FAULT_SENTINELS = {
     "data-execute": "mov w15, #0xf113",
     "stale-identity": "mov w15, #0xf114",
     "common-el1-vector": "mov w15, #0xf115",
+    "reported-breakpoint": "mov w15, #0xf116",
 }
 
 AARCH64_FAULT_OPERATIONS = {
@@ -178,6 +180,7 @@ AARCH64_FAULT_OPERATIONS = {
     "data-execute": "br x0",
     "stale-identity": "ldr x0, [x0]",
     "common-el1-vector": "brk #0x779",
+    "reported-breakpoint": "brk #0x77a",
 }
 
 _FORBIDDEN_PROGRAM_TYPES = {
@@ -1534,14 +1537,65 @@ def verify_emergency_vectors_disassembly(
         )
     for vector in range(16):
         address = stable_base + vector * 128
-        if stable_instructions.get(address) != f"mov x17, #0x{vector:x}":
+        if stable_instructions.get(address) != "sub sp, sp, #0x140":
             raise VerificationError(
-                f"stable vector {vector} does not begin with its classification"
+                f"stable vector {vector} does not allocate the fixed frame"
             )
-        branch = stable_instructions.get(address + 4, "")
-        if not branch.startswith("b ") or "burrow_aarch64_emergency_exception" not in branch:
+        save = stable_instructions.get(address + 4, "")
+        if not re.fullmatch(r"stp x0, x1, \[sp, #(?:0x)?10\]", save):
             raise VerificationError(
-                f"stable vector {vector} does not branch to the terminal reporter"
+                f"stable vector {vector} does not preserve x0 and x1"
+            )
+        if stable_instructions.get(address + 8) != f"mov x0, #0x{vector:x}":
+            raise VerificationError(
+                f"stable vector {vector} does not classify its source"
+            )
+        branch = stable_instructions.get(address + 12, "")
+        if not branch.startswith("b ") or STABLE_REPORTER_SYMBOL not in branch:
+            raise VerificationError(
+                f"stable vector {vector} does not branch to the stable reporter"
+            )
+
+    stable_reporter_result = subprocess.run(
+        [
+            str(objdump),
+            f"--disassemble-symbols={STABLE_REPORTER_SYMBOL}",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if stable_reporter_result.returncode != 0:
+        raise VerificationError("could not disassemble the stable reporter")
+    stable_reporter = re.sub(r"\s+", " ", stable_reporter_result.stdout)
+    for fragment in (
+        "stp x2, x3, [sp, #0x20]",
+        "stp x4, x5, [sp, #0x30]",
+        "stp x6, x7, [sp, #0x40]",
+        "stp x8, x9, [sp, #0x50]",
+        "stp x10, x11, [sp, #0x60]",
+        "stp x12, x13, [sp, #0x70]",
+        "stp x14, x15, [sp, #0x80]",
+        "stp x16, x17, [sp, #0x90]",
+        "stp x18, x19, [sp, #0xa0]",
+        "stp x20, x21, [sp, #0xb0]",
+        "stp x22, x23, [sp, #0xc0]",
+        "stp x24, x25, [sp, #0xd0]",
+        "stp x26, x27, [sp, #0xe0]",
+        "stp x28, x29, [sp, #0xf0]",
+        "str x30, [sp, #0x100]",
+        "mrs x1, ESR_EL1",
+        "mrs x1, ELR_EL1",
+        "mrs x1, FAR_EL1",
+        "mrs x1, SPSR_EL1",
+        "burrow_aarch64_report_exception",
+    ):
+        if fragment not in stable_reporter:
+            raise VerificationError(
+                f"stable reporter is missing instruction {fragment}"
             )
 
     reporter_result = subprocess.run(

@@ -138,6 +138,9 @@ lower/upper-stack-guard, text-write, data-execute, and stale-identity tests run
 after TTBR0 removal through the stable EL1 vector table. They require exact
 stage-8 translation, write-permission, execute-permission, and level-0 stale-
 alias syndromes respectively, plus agreed `PANIC`/4 terminal results.
+`WarrenSystemReportsCompleteExceptionFrame` injects `BRK #0x77a` after the
+kernel-C++ witness, then requires the versioned stage-9 report, exact syndrome,
+preserved x15 fixture sentinel, x30 field, and agreed `PANIC`/4.
 `WarrenSystemQemuResultFailure` requires an agreed `FAIL`/64 result, while
 `WarrenSystemQemuResultPanic` requires an agreed
 `PANIC`/2 result through the same QEMU harness used by the successful boot.

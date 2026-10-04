@@ -50,17 +50,26 @@ The runway is reassessed after every merge.
    byte writer. Both EL1 and EL2 routes prove C++ emits the console-ready
    diagnostic before publishing the retained entry witness. The completed plan
    is in [`plans/pl011-console.md`](plans/pl011-console.md).
+5. **Complete — `feature/aarch64-exception-reporting`: complete stable traps.**
+   The owned EL1 vector table now captures a fixed versioned frame containing
+   all GPRs, SP, stage, and EL1 syndrome state, then emits a bounded
+   `BURROW_EXCEPTION_V1` record through the reusable PL011 driver. The
+   completed plan is in
+   [`plans/aarch64-exception-reporting.md`](plans/aarch64-exception-reporting.md).
 
 The completed `foundation/phase-0-contracts`, `feature/burrow-image`,
 `feature/burrow-loader`, `feature/burrow-first-entry`,
-`feature/aarch64-normalized-entry`, and `feature/pl011-console` plans remain
+`feature/aarch64-normalized-entry`, `feature/pl011-console`, and
+`feature/aarch64-exception-reporting` plans remain
 available
 in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md),
 [`plans/burrow-image.md`](plans/burrow-image.md),
 [`plans/burrow-loader.md`](plans/burrow-loader.md),
 [`plans/burrow-first-entry.md`](plans/burrow-first-entry.md),
 [`plans/aarch64-normalized-entry.md`](plans/aarch64-normalized-entry.md), and
-[`plans/pl011-console.md`](plans/pl011-console.md). The implemented
+[`plans/pl011-console.md`](plans/pl011-console.md), and
+[`plans/aarch64-exception-reporting.md`](plans/aarch64-exception-reporting.md).
+The implemented
 subordinate contracts are in
 [`specifications/AARCH64_BURROW_IMAGE.md`](specifications/AARCH64_BURROW_IMAGE.md),
 [`specifications/AARCH64_NORMALIZED_ENTRY.md`](specifications/AARCH64_NORMALIZED_ENTRY.md),
@@ -70,8 +79,7 @@ subordinate contracts are in
 and
 [`specifications/TEST_RESULT_PROTOCOL_V1.md`](specifications/TEST_RESULT_PROTOCOL_V1.md).
 
-Likely later slices include complete exception reporting and the ARM generic
-timer. Their exact branch boundaries will be
+The next likely slice is the ARM generic timer. Its exact branch boundary will be
 chosen from the completed normalized-entry foundation.
 
 ## Phase 0 — Foundation

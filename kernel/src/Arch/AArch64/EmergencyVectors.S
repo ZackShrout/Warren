@@ -52,33 +52,6 @@ burrow_aarch64_emergency_vectors:
     BURROW_EMERGENCY_VECTOR 15
 .size burrow_aarch64_emergency_vectors, . - burrow_aarch64_emergency_vectors
 
-// The stable table is deliberately a distinct image-resident table. Before
-// activation its physical alias is preflighted; after the high branch VBAR_EL1
-// names this table through the owned stable image mapping.
-.section .text.burrow_aarch64_stable_vectors, "ax", %progbits
-.p2align 11
-.global burrow_aarch64_stable_vectors
-.hidden burrow_aarch64_stable_vectors
-.type burrow_aarch64_stable_vectors, %function
-burrow_aarch64_stable_vectors:
-    BURROW_EMERGENCY_VECTOR 0
-    BURROW_EMERGENCY_VECTOR 1
-    BURROW_EMERGENCY_VECTOR 2
-    BURROW_EMERGENCY_VECTOR 3
-    BURROW_EMERGENCY_VECTOR 4
-    BURROW_EMERGENCY_VECTOR 5
-    BURROW_EMERGENCY_VECTOR 6
-    BURROW_EMERGENCY_VECTOR 7
-    BURROW_EMERGENCY_VECTOR 8
-    BURROW_EMERGENCY_VECTOR 9
-    BURROW_EMERGENCY_VECTOR 10
-    BURROW_EMERGENCY_VECTOR 11
-    BURROW_EMERGENCY_VECTOR 12
-    BURROW_EMERGENCY_VECTOR 13
-    BURROW_EMERGENCY_VECTOR 14
-    BURROW_EMERGENCY_VECTOR 15
-.size burrow_aarch64_stable_vectors, . - burrow_aarch64_stable_vectors
-
 .section .text.burrow_aarch64_emergency_exception, "ax", %progbits
 .p2align 2
 .global burrow_aarch64_emergency_exception

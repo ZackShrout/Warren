@@ -51,6 +51,7 @@ set(_warren_aarch64_faults
     stale-identity
     identity-failure
     kernel-entry
+    reported-breakpoint
 )
 set(_warren_uefi_build "${_warren_product_root}/uefi")
 set(_warren_uefi_first_entry_fault_build "${_warren_product_root}/uefi-first-entry-fault")
@@ -608,33 +609,33 @@ warren_add_aarch64_fault_test(
 warren_add_aarch64_fault_test(
     WarrenSystemLowerStackGuard
     lower-guard panic 4
-    --require-output "BURROW_EXCEPTION:stage=8:vector=4:el=1:esr=0x0000000096000007:"
+    --require-output "BURROW_EXCEPTION_V1:stage=8:vector=4:el=1:esr=0x0000000096000007:"
     --require-output ":far=0xFFFFD00000000000:"
     --forbid-output "BURROW_NORMALIZED_ENTRY:"
 )
 warren_add_aarch64_fault_test(
     WarrenSystemUpperStackGuard
     upper-guard panic 4
-    --require-output "BURROW_EXCEPTION:stage=8:vector=4:el=1:esr=0x0000000096000007:"
+    --require-output "BURROW_EXCEPTION_V1:stage=8:vector=4:el=1:esr=0x0000000096000007:"
     --require-output ":far=0xFFFFD00000011000:"
     --forbid-output "BURROW_NORMALIZED_ENTRY:"
 )
 warren_add_aarch64_fault_test(
     WarrenSystemTextWriteProtection
     text-write panic 4
-    --require-output "BURROW_EXCEPTION:stage=8:vector=4:el=1:esr=0x000000009600004F:"
+    --require-output "BURROW_EXCEPTION_V1:stage=8:vector=4:el=1:esr=0x000000009600004F:"
     --forbid-output "BURROW_NORMALIZED_ENTRY:"
 )
 warren_add_aarch64_fault_test(
     WarrenSystemDataExecuteProtection
     data-execute panic 4
-    --require-output "BURROW_EXCEPTION:stage=8:vector=4:el=1:esr=0x000000008600000F:"
+    --require-output "BURROW_EXCEPTION_V1:stage=8:vector=4:el=1:esr=0x000000008600000F:"
     --forbid-output "BURROW_NORMALIZED_ENTRY:"
 )
 warren_add_aarch64_fault_test(
     WarrenSystemStaleIdentityAlias
     stale-identity panic 4
-    --require-output "BURROW_EXCEPTION:stage=8:vector=4:el=1:esr=0x0000000096000004:"
+    --require-output "BURROW_EXCEPTION_V1:stage=8:vector=4:el=1:esr=0x0000000096000004:"
     --forbid-output "BURROW_NORMALIZED_ENTRY:"
 )
 warren_add_aarch64_fault_test(
@@ -645,6 +646,14 @@ warren_add_aarch64_fault_test(
 warren_add_aarch64_fault_test(
     WarrenSystemRejectsKernelEntryWitness
     kernel-entry fail 81
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemReportsCompleteExceptionFrame
+    reported-breakpoint panic 4
+    --require-output "BURROW_EXCEPTION_V1:stage=9:vector=4:el=1:esr=0x00000000F200077A:"
+    --require-output ":x15=0x000000000000F116:"
+    --require-output ":x30=0x"
     --forbid-output "BURROW_NORMALIZED_ENTRY:"
 )
 

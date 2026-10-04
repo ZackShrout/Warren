@@ -282,6 +282,9 @@ vector fixtures access both unmapped guard pages, attempt a write to executable
 read-only text, branch to writable execute-never data, and access a removed
 physical identity alias. Those architectural probes require exact stage-8 ESR
 evidence and `PANIC`/4 rather than accepting a timeout or generic failure.
+A separate post-C++ `BRK #0x77a` fixture requires a versioned stage-9 complete
+frame record, preserved x15 sentinel and x30 field, and the same `PANIC`/4
+terminal pair.
 
 ## 10. Required Verification
 
@@ -311,8 +314,8 @@ requires its direct PL011 diagnostic plus `FAIL`/73 without entering Burrow.
 Each is packaged into its own
 ESP and accepted only when the common host harness observes the expected
 serial/process pair and route-specific output. Focused non-test debug and
-release images are inspected to ensure that semihosting and QEMU platform
-support are absent.
+release images are inspected to ensure that semihosting, injected faults, and
+test-only QEMU transport support are absent.
 
 ## 11. References
 
