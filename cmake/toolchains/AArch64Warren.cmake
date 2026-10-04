@@ -21,7 +21,10 @@ endif()
 
 include("${_warren_local_paths}")
 
-foreach(_required_path IN ITEMS
+set(WARREN_LLVM_SYMBOLIZER "${WARREN_LLVM_ROOT}/bin/llvm-symbolizer")
+set(WARREN_LLDB "${WARREN_LLVM_ROOT}/bin/lldb")
+
+set(_warren_required_paths
     WARREN_HOST_NINJA
     WARREN_HOST_PYTHON
     WARREN_CLANG
@@ -34,6 +37,10 @@ foreach(_required_path IN ITEMS
     WARREN_QEMU_AARCH64
     WARREN_AARCH64_UEFI_CODE
 )
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    list(APPEND _warren_required_paths WARREN_LLVM_SYMBOLIZER WARREN_LLDB)
+endif()
+foreach(_required_path IN LISTS _warren_required_paths)
     if(NOT EXISTS "${${_required_path}}")
         message(FATAL_ERROR
             "${_required_path} does not resolve to an existing path. "
@@ -41,6 +48,7 @@ foreach(_required_path IN ITEMS
         )
     endif()
 endforeach()
+unset(_warren_required_paths)
 
 set(CMAKE_MAKE_PROGRAM "${WARREN_HOST_NINJA}" CACHE FILEPATH "Ninja" FORCE)
 

@@ -80,7 +80,7 @@ only the 28 individually hashed files on the checked-in allowlist. QEMU's UEFI
 code and variable-store images are also verified against a checked-in integrity
 manifest before any build paths are generated.
 
-## Current Burrow First-Entry Slice
+## Current First-Light System
 
 The stable combined developer commands are:
 
@@ -223,9 +223,12 @@ No generated file is checked in unless it is a deliberate fixture whose source
 and regeneration procedure are documented.
 
 The bare AArch64 profiles emit `burrow.elf`, `burrow-runtime.elf`, and
-`burrow.map` under their `artifacts/` directory. The combined profiles emit
-`warren-system-esp.img` under their own `artifacts/` directory. Exact image and
-packaging contracts live in `specifications/AARCH64_BURROW_IMAGE.md`.
+`burrow.map` under their `artifacts/` directory. Debug also emits
+`burrow-stable.lldb` after proving real assembly and C++ symbol resolution. The
+combined profiles emit `warren-system-esp.img` under their own `artifacts/`
+directory, with the Debug profile also generating its stable LLDB commands in
+that directory. Exact image and packaging contracts live in
+`specifications/AARCH64_BURROW_IMAGE.md`.
 
 ## Build Profiles
 
@@ -325,18 +328,74 @@ steps and expected observations belong in a test note until automated.
 
 ## Debugging Workflow
 
-From First Light onward, the supported debug path should provide:
+The supported First Light debug path provides:
 
 - QEMU stopped before or at kernel entry;
 - debugger symbols loaded at their actual virtual addresses;
 - architecture-aware register and disassembly views;
 - a panic record that includes a stable identifier and source location, while
   architectural exception records retain their complete frame;
-- a symbolization tool for captured addresses; and
-- an emulator trace mode that is opt-in and bounded.
+- a symbolization tool for captured addresses.
+
+An emulator trace mode remains separate from source debugging and must be both
+opt-in and bounded when it is added.
 
 Every change to virtual layout, relocation, or symbol stripping must update and
 test this workflow.
+
+Every Burrow link first rejects a malformed map, a missing or repeated entry or
+end symbol, an invalid extent, or disagreement with the ELF header. A Debug
+build additionally calls the pinned `llvm-symbolizer` and requires real AArch64
+assembly and C++ DWARF to resolve through ELF-relative, fixed stable-alias, and
+explicit physical-load addresses. Source locations are normalized to paths
+inside the repository.
+
+Start either complete Debug system route paused in one terminal:
+
+```sh
+cmake --build build/system-aarch64-debug --target WarrenSystemDebug-el1
+# or: cmake --build build/system-aarch64-debug --target WarrenSystemDebug-el2
+```
+
+The launcher copies the firmware variable template to disposable storage,
+passes `-S`, and binds the GDB stub only to `127.0.0.1:1234`. Attach the pinned
+LLDB from a second terminal:
+
+```sh
+cmake --build build/system-aarch64-debug --target WarrenSystemLldb
+```
+
+The generated command file loads the symbol image at the fixed
+`0xFFFFFFFF80000000` alias. Set a breakpoint on a stable symbol such as
+`burrow_kernel_entry`, then continue. For a physical address, use the exact
+loader-reported bias to generate a separate command file:
+
+```sh
+load_bias=0x5C73F000 # Replace with the exact loader-reported value.
+python3 tools/burrow_debug.py lldb \
+  --image build/aarch64-debug/artifacts/burrow.elf \
+  --map build/aarch64-debug/artifacts/burrow.map \
+  --source-root . --address-space physical --load-bias "$load_bias" \
+  --output build/aarch64-debug/artifacts/burrow-physical.lldb
+```
+
+Captured ELF-relative, stable, or physical addresses can be symbolized without
+starting a debugger. The tool rejects underflow and addresses at or beyond the
+mapped image end before invoking LLVM:
+
+```sh
+python3 tools/burrow_debug.py symbolize \
+  --image build/aarch64-debug/artifacts/burrow.elf \
+  --map build/aarch64-debug/artifacts/burrow.map \
+  --symbolizer "$(brew --prefix llvm)/bin/llvm-symbolizer" \
+  --source-root . --address-space stable \
+  --address 0xFFFFFFFF80001000
+```
+
+For physical input, select `--address-space physical` and supply
+`--load-bias`; for ELF values, select `--address-space elf`. Each result is one
+compact `BURROW_SYMBOL_V1` JSON object so captured diagnostics can be processed
+without scraping human-oriented debugger output.
 
 ## Dependency Policy
 

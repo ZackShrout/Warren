@@ -9,7 +9,10 @@ if(NOT EXISTS "${_warren_local_paths}")
 endif()
 include("${_warren_local_paths}")
 
-foreach(_required_path IN ITEMS
+set(WARREN_LLVM_SYMBOLIZER "${WARREN_LLVM_ROOT}/bin/llvm-symbolizer")
+set(WARREN_LLDB "${WARREN_LLVM_ROOT}/bin/lldb")
+
+set(_warren_required_paths
     WARREN_HOST_NINJA
     WARREN_HOST_PYTHON
     WARREN_MFORMAT
@@ -18,6 +21,10 @@ foreach(_required_path IN ITEMS
     WARREN_AARCH64_UEFI_CODE
     WARREN_AARCH64_UEFI_VARS
 )
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    list(APPEND _warren_required_paths WARREN_LLVM_SYMBOLIZER WARREN_LLDB)
+endif()
+foreach(_required_path IN LISTS _warren_required_paths)
     if(NOT EXISTS "${${_required_path}}")
         message(FATAL_ERROR
             "${_required_path} does not resolve to an existing path. "
@@ -25,6 +32,7 @@ foreach(_required_path IN ITEMS
         )
     endif()
 endforeach()
+unset(_warren_required_paths)
 
 if(NOT CMAKE_BUILD_TYPE MATCHES "^(Debug|Release)$")
     message(FATAL_ERROR "System images require CMAKE_BUILD_TYPE Debug or Release")
@@ -464,6 +472,61 @@ add_custom_target(WarrenSystemImage ALL DEPENDS
     WarrenSystemHostLoader
 )
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(_warren_debug_lldb
+        "${_warren_artifact_directory}/burrow-stable.lldb")
+    add_custom_command(
+        OUTPUT "${_warren_debug_lldb}"
+        COMMAND "${WARREN_HOST_PYTHON}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/burrow_debug.py"
+            check
+            --image "${_warren_burrow_symbols}"
+            --map "${_warren_burrow_map}"
+            --symbolizer "${WARREN_LLVM_SYMBOLIZER}"
+            --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        COMMAND "${WARREN_HOST_PYTHON}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/burrow_debug.py"
+            lldb
+            --image "${_warren_burrow_symbols}"
+            --map "${_warren_burrow_map}"
+            --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+            --address-space stable
+            --output "${_warren_debug_lldb}"
+        DEPENDS
+            WarrenSystemBurrow
+            "${_warren_burrow_symbols}"
+            "${_warren_burrow_map}"
+            tools/burrow_debug.py
+        VERBATIM
+    )
+    add_custom_target(WarrenSystemDebugArtifacts
+        DEPENDS "${_warren_debug_lldb}"
+    )
+    add_dependencies(WarrenSystemImage WarrenSystemDebugArtifacts)
+
+    foreach(_warren_debug_el IN ITEMS el1 el2)
+        add_custom_target("WarrenSystemDebug-${_warren_debug_el}"
+            COMMAND "${WARREN_HOST_PYTHON}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_aarch64_debug.py"
+                --qemu "${WARREN_QEMU_AARCH64}"
+                --firmware-code "${WARREN_AARCH64_UEFI_CODE}"
+                --firmware-vars "${WARREN_AARCH64_UEFI_VARS}"
+                --esp "${_warren_esp}"
+                --initial-el "${_warren_debug_el}"
+            DEPENDS WarrenSystemImage WarrenSystemDebugArtifacts
+            USES_TERMINAL
+            VERBATIM
+        )
+    endforeach()
+
+    add_custom_target(WarrenSystemLldb
+        COMMAND "${WARREN_LLDB}" --source "${_warren_debug_lldb}"
+        DEPENDS WarrenSystemDebugArtifacts
+        USES_TERMINAL
+        VERBATIM
+    )
+endif()
+
 add_test(
     NAME WarrenSystemBurrowProductionLoader
     COMMAND "${_warren_loader_test}" "${_warren_burrow_image}"
@@ -833,5 +896,6 @@ unset(_warren_console_fault_esp)
 unset(_warren_post_exit_fault_esp)
 unset(_warren_uefi_build)
 unset(_warren_uefi_first_entry_fault_build)
+unset(_warren_debug_lldb)
 unset(_warren_uefi_console_fault_build)
 unset(_warren_uefi_post_exit_fault_build)

@@ -262,6 +262,7 @@ Each `aarch64-debug` and `aarch64-release` build emits:
 artifacts/burrow.elf          symbol-bearing inspection and debugger image
 artifacts/burrow-runtime.elf  debug-stripped image selected for packaging
 artifacts/burrow.map          human-reviewable LLD map
+artifacts/burrow-stable.lldb  generated stable-slide commands (Debug only)
 ```
 
 Debug compilation uses DWARF 5 with repository-relative paths. The debug symbol
@@ -269,6 +270,19 @@ image retains non-allocated `.debug_*` sections; the runtime copy rejects debug,
 comment, and note metadata. Release may naturally contain no debug sections.
 Both copies retain the entry, symbol surface required for audit, program
 headers, dynamic metadata, and relocations.
+
+`tools/burrow_debug.py` requires the map's canonical LLD header, exactly one
+`burrow_aarch64_entry`, exactly one `burrow_image_end`, a positive bounded image
+extent, and equality between the mapped and ELF-header entry. That structural
+gate runs for Debug and Release links. A Debug-only gate then requires
+`llvm-symbolizer` to resolve the assembly entry and the C++
+`burrow_qemu_virt_panic` probe from ELF-relative addresses, the fixed stable
+alias, and an explicit physical load bias. Reported source paths must remain
+inside the repository.
+
+The generated LLDB file selects AArch64, maps relative DWARF paths to the source
+root, connects only to `127.0.0.1:1234`, and loads `burrow.elf` at the fixed
+stable slide. It is a generated host artifact, never an ESP payload.
 
 The runtime-copy check allows only the ELF header fields that locate and count
 the non-loaded section-header table to change during stripping. The program

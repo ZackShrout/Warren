@@ -61,6 +61,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/plans/aarch64-generic-timer.md
     docs/plans/diagnostic-monitor.md
     docs/plans/panic-assertion-paths.md
+    docs/plans/symbolized-debug-workflow.md
     docs/plans/phase-0-contracts.md
     docs/adr/0000-template.md
     docs/adr/0001-reference-target.md
@@ -133,6 +134,7 @@ add_custom_target(WarrenPlanning SOURCES
     third_party/edk2/README.md
     third_party/edk2/headers.sha256
     tools/bootstrap.sh
+    tools/burrow_debug.py
     tools/build_esp.py
     tools/dependencies/macos-brew.txt
     tools/dependencies/fetch_edk2_headers.sh
@@ -140,12 +142,14 @@ add_custom_target(WarrenPlanning SOURCES
     tools/dependencies/ToolchainBaseline.cmake
     tools/dependencies/check_tool_versions.cmake
     tools/run_uefi_smoke.py
+    tools/run_aarch64_debug.py
     tools/verify_burrow_image.py
     tools/verify_esp_contents.py
     tools/verify_esp_reproducibility.py
     tools/verify_uefi_image.py
     tools/warren_test_protocol.py
     tests/host/BurrowImageVerifierTests.py
+    tests/host/BurrowDebugTests.py
     tests/host/EspBuilderTests.py
     tests/host/TransitionPlanTests.cpp
     tests/host/AArch64PageTableTests.cpp
@@ -815,6 +819,12 @@ if(NOT CMAKE_CROSSCOMPILING)
     )
 
     add_test(
+        NAME WarrenBurrowDebug
+        COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/host/BurrowDebugTests.py"
+    )
+
+    add_test(
         NAME WarrenEspBuilderInputs
         COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/host/EspBuilderTests.py"
@@ -1058,6 +1068,11 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             "${_burrow_symbol_image}"
             $<TARGET_OBJECTS:BurrowImageObjects>
         COMMAND "${WARREN_HOST_PYTHON}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/burrow_debug.py"
+            verify
+            --image "${_burrow_symbol_image}"
+            --map "${_burrow_map}"
+        COMMAND "${WARREN_HOST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_burrow_image.py"
             --objdump "${CMAKE_OBJDUMP}"
             ${_burrow_verifier_result_arguments}
@@ -1079,6 +1094,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
             BurrowImageObjects
             $<TARGET_OBJECTS:BurrowImageObjects>
             kernel/linker/AArch64/burrow.ld
+            tools/burrow_debug.py
             tools/verify_burrow_image.py
         COMMAND_EXPAND_LISTS
         VERBATIM
@@ -1101,6 +1117,36 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         USES_TERMINAL
     )
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(_burrow_lldb "${_burrow_artifact_directory}/burrow-stable.lldb")
+        add_custom_command(
+            OUTPUT "${_burrow_lldb}"
+            COMMAND "${WARREN_HOST_PYTHON}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/burrow_debug.py"
+                check
+                --image "${_burrow_symbol_image}"
+                --map "${_burrow_map}"
+                --symbolizer "${WARREN_LLVM_SYMBOLIZER}"
+                --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+            COMMAND "${WARREN_HOST_PYTHON}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/burrow_debug.py"
+                lldb
+                --image "${_burrow_symbol_image}"
+                --map "${_burrow_map}"
+                --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+                --address-space stable
+                --output "${_burrow_lldb}"
+            DEPENDS
+                BurrowImage
+                "${_burrow_symbol_image}"
+                "${_burrow_map}"
+                tools/burrow_debug.py
+            VERBATIM
+        )
+        add_custom_target(BurrowDebugArtifacts ALL DEPENDS "${_burrow_lldb}")
+        unset(_burrow_lldb)
+    endif()
 
     unset(_burrow_artifact_directory)
     unset(_burrow_symbol_image)
