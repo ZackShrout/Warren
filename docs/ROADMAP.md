@@ -72,12 +72,20 @@ The runway is reassessed after every merge.
    location, detects recursive entry, and terminates assertions and kernel
    panics distinctly. The completed plan is in
    [`plans/panic-assertion-paths.md`](plans/panic-assertion-paths.md).
+9. **Complete — `codex/symbolized-debug-workflow`: audited host debugging.**
+   Every Burrow link verifies its map against the ELF entry and image extent;
+   Debug builds prove retained assembly and C++ DWARF across ELF, stable, and
+   physical aliases and generate a fixed-slide LLDB command file. Opt-in EL1
+   and EL2 targets run the pinned system profile paused behind a loopback-only
+   GDB stub. The completed plan is in
+   [`plans/symbolized-debug-workflow.md`](plans/symbolized-debug-workflow.md).
 
 The completed `foundation/phase-0-contracts`, `feature/burrow-image`,
 `feature/burrow-loader`, `feature/burrow-first-entry`,
 `feature/aarch64-normalized-entry`, `feature/pl011-console`,
 `feature/aarch64-exception-reporting`, `codex/aarch64-generic-timer`,
-`codex/diagnostic-monitor`, and `codex/panic-assertion-paths` plans
+`codex/diagnostic-monitor`, `codex/panic-assertion-paths`, and
+`codex/symbolized-debug-workflow` plans
 remain available in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md),
 [`plans/burrow-image.md`](plans/burrow-image.md),
 [`plans/burrow-loader.md`](plans/burrow-loader.md),
@@ -86,8 +94,9 @@ remain available in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md),
 [`plans/pl011-console.md`](plans/pl011-console.md),
 [`plans/aarch64-exception-reporting.md`](plans/aarch64-exception-reporting.md),
 [`plans/aarch64-generic-timer.md`](plans/aarch64-generic-timer.md),
-[`plans/diagnostic-monitor.md`](plans/diagnostic-monitor.md), and
-[`plans/panic-assertion-paths.md`](plans/panic-assertion-paths.md).
+[`plans/diagnostic-monitor.md`](plans/diagnostic-monitor.md),
+[`plans/panic-assertion-paths.md`](plans/panic-assertion-paths.md), and
+[`plans/symbolized-debug-workflow.md`](plans/symbolized-debug-workflow.md).
 The implemented subordinate contracts are in
 [`specifications/AARCH64_BURROW_IMAGE.md`](specifications/AARCH64_BURROW_IMAGE.md),
 [`specifications/AARCH64_NORMALIZED_ENTRY.md`](specifications/AARCH64_NORMALIZED_ENTRY.md),
@@ -97,8 +106,9 @@ The implemented subordinate contracts are in
 and
 [`specifications/TEST_RESULT_PROTOCOL_V1.md`](specifications/TEST_RESULT_PROTOCOL_V1.md).
 
-The next likely slice is the linker-map and symbolized debugging workflow,
-using the completed panic records as its stable diagnostic input.
+The next likely slice begins Phase 2 with the normalized physical-memory
+inventory and a bounded boot allocator, building on the accepted boot map and
+reserved transition arena without introducing a general heap.
 
 ## Phase 0 — Foundation
 
@@ -140,7 +150,7 @@ Exit gates:
 
 ## Phase 1 — First Light
 
-**Status:** Active
+**Status:** Complete
 
 **Objective:** Boot Burrow reproducibly and make early failure observable.
 
@@ -179,7 +189,7 @@ Completed Phase 1 evidence:
 - debug and release QEMU proof that Burrow accepts EL1 and EL2 firmware entry,
   normalizes both routes to owned EL1 translation, removes identity mappings,
   reaches its generic C++ witness, and reports an agreed two-channel
-  `aarch64-normalized-entry` result; and
+  `aarch64-normalized-entry` result;
 - target failure fixtures for malformed finalized header and console data,
   loader post-exit containment, inherited and common/stable vector traps, every
   normalized-entry failure code from 75 through 83, both stack guards, image
@@ -197,9 +207,13 @@ Completed Phase 1 evidence:
 - a retained, allocation-free panic path with bounded identifier, file, and
   message fields, interrupt masking, recursive-entry classification, ordinary
   terminal wait, and post-monitor live proof of distinct `PANIC`/2 assertion
-  and `PANIC`/3 kernel-panic results.
+  and `PANIC`/3 kernel-panic results; and
+- a structurally audited linker map, build-time Debug proof of assembly and C++
+  DWARF through ELF-relative, stable, and physical aliases, bounded captured-
+  address symbolization, generated stable-slide LLDB commands, and opt-in
+  loopback-only paused QEMU targets for both inherited entry levels.
 
-Exit demonstration:
+Completed exit demonstration:
 
 > A clean debug build boots in the pinned QEMU machine, prints its validated
 > memory map, deliberately survives a handled timer interrupt, reports a test

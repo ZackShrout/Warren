@@ -1,7 +1,7 @@
 # Warren Architecture
 
-**Status:** Phase 0 contracts accepted; Phase 1 normalized higher-half entry
-and allocation-free PL011 output implemented through architecture-neutral C++
+**Status:** Phase 0 and Phase 1 complete; First Light boots, reports, interacts,
+fails deterministically, and supports audited host-side symbolized debugging
 
 **Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
 
@@ -141,6 +141,15 @@ image has zero runtime relocations; later images may use only the audited
 sections, dynamic metadata, symbols, relocation policy, and packaging rules are
 specified in `specifications/AARCH64_BURROW_IMAGE.md` and enforced by an
 independent byte-level host verifier.
+
+Host-only debug tooling treats `burrow.elf` as the canonical symbol image and
+the LLD map as an audited address-extent input. It normalizes captured addresses
+from the ELF-relative image, the fixed `0xFFFFFFFF80000000` stable alias, or an
+explicit loader-reported physical bias before invoking `llvm-symbolizer`.
+Debug builds prove both assembly and C++ source resolution and generate LLDB
+commands for the stable slide. Opt-in system targets expose QEMU's GDB stub only
+on loopback and start the guest paused; none of this tooling or metadata enters
+the packaged runtime image.
 
 The bootloader locates the packaged ELF only through the loaded-image device and
 fixed Warren path. An EFI-neutral bounded-byte reader validates the ELF64
@@ -371,7 +380,9 @@ masks interrupts before touching the console, publishes one bounded
 `BURROW_PANIC_V1` assertion or kernel-panic record, detects recursive entry
 without re-entering the formatter, and ends in an architecture terminal wait.
 Test-enabled images alone replace that wait with the agreed `PANIC`/2 or
-`PANIC`/3 transport; later kernel initialization remains.
+`PANIC`/3 transport. The host debugger workflow now audits every generated map,
+proves retained Debug symbols across all supported address aliases, and provides
+paused EL1/EL2 QEMU attachment; later kernel initialization remains.
 
 Later decisions include the syscall ABI, kernel object model, scheduler policy,
 VFS semantics, libc strategy, service model, package format, graphics stack, and

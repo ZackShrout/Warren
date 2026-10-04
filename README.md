@@ -5,7 +5,7 @@ Burrow. The project begins on AArch64 under emulation, is designed to admit an
 x86-64 port, and ultimately aims to support native software development on
 Warren itself.
 
-Warren has completed **Phase 0: Foundation** and begun **Phase 1: First Light**.
+Warren has completed **Phase 0: Foundation** and **Phase 1: First Light**.
 The repository builds and independently audits Burrow's AArch64 ELF image, then
 packages its debug-stripped runtime copy beside Warren's UEFI bootloader. The
 bootloader opens that exact packaged file from its own boot device, validates it
@@ -46,6 +46,11 @@ interrupts, classifies assertion and kernel-panic records separately, publishes
 one bounded `BURROW_PANIC_V1` line with a stable identifier and source location,
 and enters a nonreturning wait. Dedicated post-monitor fixtures prove assertions
 as `PANIC`/2 and kernel panics as `PANIC`/3 through the isolated test transport.
+Every Burrow link now structurally verifies its LLD map against the ELF entry and
+image extent. Debug builds also prove that LLVM resolves assembly and C++ DWARF
+through ELF-relative, fixed stable-alias, and explicit physical-load addresses,
+then generate a ready-to-source LLDB command file. Opt-in EL1 and EL2 system
+targets start the pinned QEMU profile paused behind a loopback-only GDB stub.
 
 ## Project Vocabulary
 
@@ -150,6 +155,18 @@ protection, and stale-identity removal.
 UEFI fault fixtures prove rejection of malformed finalized handoff data and
 loader-side post-exit containment. Focused Burrow products do not contain that
 transport or any fault injection.
+
+Debug builds also emit `burrow-stable.lldb`. To start the complete system paused
+and attach LLDB from another terminal:
+
+```sh
+cmake --build build/system-aarch64-debug --target WarrenSystemDebug-el1
+cmake --build build/system-aarch64-debug --target WarrenSystemLldb
+```
+
+Use `WarrenSystemDebug-el2` for the inherited EL2 route. The debugger listener
+is bound only to `127.0.0.1:1234`; the QEMU launcher uses a disposable copy of
+the firmware variable store.
 
 Before final map capture, loader diagnostics use the UEFI console. After a
 successful exit, the loader and first-entry witness use minimal direct PL011
