@@ -15,6 +15,7 @@
 OUTPUT_FORMAT(elf64-littleaarch64)
 OUTPUT_ARCH(aarch64)
 ENTRY(burrow_aarch64_entry)
+EXTERN(burrow_qemu_virt_panic)
 
 PHDRS
 {

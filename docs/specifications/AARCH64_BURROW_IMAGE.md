@@ -340,6 +340,15 @@ base rather than trusting a rejected console record. The exception entry is
 reached only after the production reporter emits its architectural record. Both
 update the shared semihosting argument block before the one common trap.
 
+The production `burrow_qemu_virt_panic` symbol is an explicit linker root, so
+ordinary images retain the platform entry, Core formatter, interrupt-mask
+helper, and nonreturning `WFE` terminal loop even before a general kernel caller
+exists. Test-enabled images redirect only that final termination edge to a
+dedicated result entry accepting codes 2 and 3. The verifier requires the
+production symbols and interrupt masks in every image, requires the ordinary
+wait when testing is off, and rejects every QEMU panic marker and semihosting
+trap from focused products.
+
 Stable-vector records use `BURROW_EXCEPTION_V1` and include stage, vector, EL1
 syndrome state, interrupted SP, and x0 through x30 as fixed-width hexadecimal
 values. A dedicated stage-9 `BRK #0x77a` child proves the full reporter after

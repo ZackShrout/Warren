@@ -366,7 +366,12 @@ transfer, and identity removal are also implemented and proven through both
 routes. The fixed architecture-neutral C++ boundary is also implemented and
 proven. Platform-selected, allocation-free console input/output, one handled
 timer interrupt, and the bounded diagnostic monitor are also implemented and
-proven through both firmware routes; later kernel initialization remains.
+proven through both firmware routes. The retained QEMU-virt panic entry now
+masks interrupts before touching the console, publishes one bounded
+`BURROW_PANIC_V1` assertion or kernel-panic record, detects recursive entry
+without re-entering the formatter, and ends in an architecture terminal wait.
+Test-enabled images alone replace that wait with the agreed `PANIC`/2 or
+`PANIC`/3 transport; later kernel initialization remains.
 
 Later decisions include the syscall ABI, kernel object model, scheduler policy,
 VFS semantics, libc strategy, service model, package format, graphics stack, and

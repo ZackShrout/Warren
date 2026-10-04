@@ -135,6 +135,10 @@ QEMU_NORMALIZED_FAILURE_MARKER_TEMPLATE = (
     b"WARREN_TEST:1:FAIL:aarch64-normalized-entry:00\r\n\0"
 )
 QEMU_EXCEPTION_MARKER = b"WARREN_TEST:1:PANIC:aarch64-normalized-entry:4\r\n\0"
+QEMU_ASSERTION_MARKER = b"WARREN_TEST:1:PANIC:aarch64-normalized-entry:2\r\n\0"
+QEMU_PANIC_MARKER = b"WARREN_TEST:1:PANIC:aarch64-normalized-entry:3\r\n\0"
+PANIC_ASSERTION_FIXTURE_IDENTIFIER = b"phase1.assertion"
+PANIC_KERNEL_FIXTURE_IDENTIFIER = b"phase1.panic"
 QEMU_EXIT_ARGUMENTS = struct.pack("<QQ", 0x20026, 0)
 QEMU_RESULT_MARKERS = {
     "pass": QEMU_PASS_MARKER,
@@ -165,6 +169,8 @@ AARCH64_FAULT_SENTINELS = {
     "reported-breakpoint": "mov w15, #0xf116",
     "timer-initialization": "mov w15, #0xf117",
     "monitor": "mov w15, #0xf118",
+    "assertion": "mov w15, #0xf119",
+    "panic": "mov w15, #0xf11a",
 }
 
 AARCH64_FAULT_OPERATIONS = {
@@ -185,6 +191,8 @@ AARCH64_FAULT_OPERATIONS = {
     "reported-breakpoint": "brk #0x77a",
     "timer-initialization": "mov w0, #0x1",
     "monitor": "mov w0, #0x1",
+    "assertion": "burrow_qemu_virt_trigger_assertion_fixture",
+    "panic": "burrow_qemu_virt_trigger_panic_fixture",
 }
 
 _FORBIDDEN_PROGRAM_TYPES = {
@@ -1166,6 +1174,17 @@ def _validate_qemu_test_result_transport(
             f"QEMU semihost HLT must be {requirement}, found {hlt_count}"
         )
 
+    if mode is None:
+        for identifier, name in (
+            (PANIC_ASSERTION_FIXTURE_IDENTIFIER, "assertion"),
+            (PANIC_KERNEL_FIXTURE_IDENTIFIER, "kernel-panic"),
+        ):
+            count = loaded_bytes.count(identifier)
+            if count != 0:
+                raise VerificationError(
+                    f"{name} fixture identifier must be absent, found {count}"
+                )
+
     expected_failure_template_count = 1 if mode is not None else 0
     for marker, name in (
         (QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE, "first-entry"),
@@ -1188,13 +1207,30 @@ def _validate_qemu_test_result_transport(
             f"{requirement}, found {exception_marker_count}"
         )
 
+    for marker, name in (
+        (QEMU_ASSERTION_MARKER, "assertion"),
+        (QEMU_PANIC_MARKER, "panic"),
+    ):
+        marker_count = loaded_bytes.count(marker)
+        expected_marker_count = 1 if mode is not None else 0
+        if marker_count != expected_marker_count:
+            requirement = "exactly once" if mode is not None else "absent"
+            raise VerificationError(
+                f"QEMU {name} marker must be {requirement}, found {marker_count}"
+            )
+
     for result_mode in QEMU_RESULT_MARKERS:
         expected_count = 1 if mode == result_mode else 0
         requirement = "exactly once" if expected_count == 1 else "absent"
-        for payload, description in (
-            (QEMU_RESULT_MARKERS[result_mode], f"QEMU {result_mode} marker"),
-            (QEMU_RESULT_ARGUMENTS[result_mode], f"QEMU {result_mode} argument block"),
-        ):
+        payloads = []
+        if result_mode != "panic":
+            payloads.append(
+                (QEMU_RESULT_MARKERS[result_mode], f"QEMU {result_mode} marker")
+            )
+        payloads.append(
+            (QEMU_RESULT_ARGUMENTS[result_mode], f"QEMU {result_mode} argument block")
+        )
+        for payload, description in payloads:
             count = loaded_bytes.count(payload)
             if count == expected_count:
                 continue
@@ -2172,6 +2208,95 @@ def verify_qemu_result_disassembly(
                 f"QEMU exception transport is missing instruction {fragment}"
             )
 
+    panic_result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble-symbols=burrow_qemu_test_panic",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if panic_result.returncode != 0:
+        raise VerificationError("could not disassemble the QEMU panic transport")
+    panic_instructions = re.sub(r"\s+", " ", panic_result.stdout)
+    for fragment in (
+        "mov x24, x1",
+        "cmp w0, #0x2",
+        "cmp w0, #0x3",
+        "str x5, [x6, #0x8]",
+        "burrow_qemu_emit_result",
+    ):
+        if fragment not in panic_instructions:
+            raise VerificationError(
+                f"QEMU panic transport is missing instruction {fragment}"
+            )
+
+
+def verify_panic_disassembly(
+    objdump: pathlib.Path,
+    image: pathlib.Path,
+    *,
+    qemu_test_result: str | None,
+) -> None:
+    result = subprocess.run(
+        [
+            str(objdump),
+            "--disassemble-symbols=burrow_aarch64_mask_panic_interrupts,"
+            "burrow_aarch64_terminate_panic,burrow_qemu_virt_panic",
+            "--no-show-raw-insn",
+            str(image),
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        raise VerificationError("could not disassemble the production panic path")
+
+    disassembly = re.sub(r"\s+", " ", result.stdout)
+    for symbol in (
+        "<burrow_aarch64_mask_panic_interrupts>",
+        "<burrow_aarch64_terminate_panic>",
+        "<burrow_qemu_virt_panic>",
+    ):
+        if symbol not in disassembly:
+            raise VerificationError(
+                f"production panic path is missing retained symbol {symbol}"
+            )
+    if disassembly.count("msr DAIFSet, #0xf") < 2:
+        raise VerificationError(
+            "production panic path must mask interrupts on entry and termination"
+        )
+    for symbol in (
+        "burrow_aarch64_mask_panic_interrupts",
+        "burrow_aarch64_terminate_panic",
+    ):
+        if disassembly.count(symbol) < 2:
+            raise VerificationError(
+                f"platform panic entry does not call {symbol}"
+            )
+
+    uses_test_transport = "<burrow_qemu_test_panic>" in disassembly
+    if qemu_test_result is None:
+        if " wfe " not in disassembly:
+            raise VerificationError(
+                "ordinary panic termination does not enter a masked wait"
+            )
+        if uses_test_transport:
+            raise VerificationError(
+                "ordinary panic termination references the QEMU test transport"
+            )
+    else:
+        if not uses_test_transport:
+            raise VerificationError(
+                "test panic termination does not use the QEMU test transport"
+            )
+
 
 def verify_aarch64_fault_injection_disassembly(
     objdump: pathlib.Path,
@@ -2220,6 +2345,8 @@ def verify_aarch64_fault_injection_disassembly(
     window = instructions[sentinel_index + 1 : sentinel_index + 9]
     if operation == "b ":
         matched = any(instruction.startswith(operation) for instruction in window)
+    elif operation.startswith("burrow_"):
+        matched = any(operation in instruction for instruction in window)
     else:
         matched = operation in window
     if not matched:
@@ -2300,6 +2427,11 @@ def main() -> int:
             arguments.objdump,
             arguments.image,
             mode=arguments.qemu_test_result,
+        )
+        verify_panic_disassembly(
+            arguments.objdump,
+            arguments.image,
+            qemu_test_result=arguments.qemu_test_result,
         )
         verify_aarch64_fault_injection_disassembly(
             arguments.objdump,

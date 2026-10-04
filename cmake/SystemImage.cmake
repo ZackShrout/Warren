@@ -54,6 +54,8 @@ set(_warren_aarch64_faults
     reported-breakpoint
     timer-initialization
     monitor
+    assertion
+    panic
 )
 set(_warren_uefi_build "${_warren_product_root}/uefi")
 set(_warren_uefi_first_entry_fault_build "${_warren_product_root}/uefi-first-entry-fault")
@@ -682,6 +684,28 @@ warren_add_aarch64_fault_test(
     WarrenSystemRejectsMonitor
     monitor fail 83
     --forbid-output "BURROW_MONITOR:"
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemAssertionPath
+    assertion panic 2
+    --serial-input-after "BURROW_MONITOR:ready:"
+    --serial-input-line exit
+    --require-output-in-order "BURROW_MONITOR:ready:commands=help,status,exit"
+    --require-output-in-order "BURROW_MONITOR:exit=accepted"
+    --require-output-in-order "BURROW_PANIC_V1:kind=assertion:id=phase1.assertion:file=kernel/src/Platform/QemuVirt/Panic.cpp:line="
+    --require-output ":message=fixture assertion"
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemPanicPath
+    panic panic 3
+    --serial-input-after "BURROW_MONITOR:ready:"
+    --serial-input-line exit
+    --require-output-in-order "BURROW_MONITOR:ready:commands=help,status,exit"
+    --require-output-in-order "BURROW_MONITOR:exit=accepted"
+    --require-output-in-order "BURROW_PANIC_V1:kind=panic:id=phase1.panic:file=kernel/src/Platform/QemuVirt/Panic.cpp:line="
+    --require-output ":message=fixture panic"
     --forbid-output "BURROW_NORMALIZED_ENTRY:"
 )
 

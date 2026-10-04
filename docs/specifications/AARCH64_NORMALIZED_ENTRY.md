@@ -346,6 +346,23 @@ or the matching `initial=EL2` form, followed by the versioned terminal success
 record in a test image. Ordinary images enter a masked wait after the bounded
 diagnostic.
 
+Assertion and kernel-panic fixtures branch after the monitor has accepted
+`exit` but before normalized success. Both enter the retained production panic
+path, which masks DAIF before console work and never returns. It emits exactly
+one validated record of this shape:
+
+```text
+BURROW_PANIC_V1:kind=<assertion|panic>:id=<identifier>:file=<file>:line=<decimal>:message=<message>\r\n
+```
+
+Identifiers contain 1–32 lowercase ASCII letters, digits, `.`, `_`, or `-`.
+Files contain 1–96 ASCII letters, digits, `/`, `.`, `_`, or `-`; line is a
+nonzero `uint32_t`. Messages contain 1–128 printable ASCII bytes and no line
+break. The formatter allocates nothing. Recursive entry bypasses it and
+attempts one fixed minimal recursion record. Ordinary termination remains in a
+masked `WFE` loop; test-only termination maps a non-null assertion record to
+`PANIC`/2 and every other entry classification to `PANIC`/3.
+
 ## 11. Failure Allocation And Test Profiles
 
 Normalized-entry failures use these test-only `FAIL` result codes; architectural

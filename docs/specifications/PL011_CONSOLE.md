@@ -107,3 +107,13 @@ System tests wait for the ready record before writing `status\r` and `exit\r`
 to QEMU's PL011 input and require ready, status, and exit in that order before
 accepting normalized success. No shell grammar, editing, history, allocator,
 scheduler, IRQ-driven receive, or unbounded session is part of this contract.
+
+## 8. Panic Use
+
+After stable translation is active, the QEMU-virt panic adapter constructs a
+fresh writer directly from the fixed checked PL011 virtual address. It masks
+interrupts first and uses the ordinary bounded writer for the versioned panic
+record. A failed record validation or write causes one fixed fallback write
+attempt; recursive entry causes one fixed minimal write attempt. Neither case
+retries, allocates, enables interrupts, or returns. This is a caller policy
+above the device-class and PL011 layers, not behavior embedded in the driver.

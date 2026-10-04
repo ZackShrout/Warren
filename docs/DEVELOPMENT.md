@@ -152,6 +152,13 @@ The monitor fixture requires `FAIL`/83 and forbids every monitor and
 normalized-success diagnostic. Successful EL1/EL2 and result-transport tests
 wait for the monitor-ready record, inject `status` and `exit` through QEMU's
 serial input, and require ready, status, and exit records in order.
+The assertion and kernel-panic fixtures wait for that same ready record, inject
+`exit`, require the accepted-exit record before an exact `BURROW_PANIC_V1`
+record, forbid normalized success, and require agreed `PANIC`/2 and `PANIC`/3
+serial/process results respectively. Focused images retain the production
+formatter and masked terminal wait while excluding fixtures, terminal markers,
+and semihosting.
+
 `WarrenSystemQemuResultFailure` requires an agreed `FAIL`/64 result, while
 `WarrenSystemQemuResultPanic` requires an agreed
 `PANIC`/2 result through the same QEMU harness used by the successful boot.
@@ -323,7 +330,8 @@ From First Light onward, the supported debug path should provide:
 - QEMU stopped before or at kernel entry;
 - debugger symbols loaded at their actual virtual addresses;
 - architecture-aware register and disassembly views;
-- a panic message that includes a stable identifier and exception frame;
+- a panic record that includes a stable identifier and source location, while
+  architectural exception records retain their complete frame;
 - a symbolization tool for captured addresses; and
 - an emulator trace mode that is opt-in and bounded.
 

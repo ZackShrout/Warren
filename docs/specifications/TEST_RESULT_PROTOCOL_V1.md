@@ -306,7 +306,12 @@ The target test matrix proves the exact AArch64 trap and argument block with
 pass, fail, and panic images. The transport fixtures select `PASS`/0, `FAIL`/64,
 or `PANIC`/2 at build time. Normalized-entry fixtures additionally prove every
 assigned failure code and the stable protection faults described above. A
-separate UEFI fixture corrupts the finalized magic
+dedicated dynamic panic entry accepts only code 2 or 3, rewrites the shared
+argument status, selects the matching terminal marker, and enters the same
+single common semihosting trap. Live post-monitor fixtures reach that entry only
+after the production `BURROW_PANIC_V1` reporter and require assertion code 2 or
+kernel-panic code 3 on both channels. A separate UEFI fixture corrupts the
+finalized magic
 after successful `ExitBootServices()` and requires Burrow to reject it with
 `FAIL`/68 without emitting its first-entry success diagnostic. A second clears
 the finalized console output flag and requires complete-consumer `FAIL`/74

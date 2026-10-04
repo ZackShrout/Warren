@@ -307,6 +307,16 @@ burrow_aarch64_activate_translation:
 #endif
     cbnz w0, .Lmonitor_failure
 
+#if defined(WARREN_AARCH64_FAULT_INJECT_ASSERTION)
+    mov w15, #0xf119
+    bl burrow_qemu_virt_trigger_assertion_fixture
+    b .Lactivation_wait
+#elif defined(WARREN_AARCH64_FAULT_INJECT_PANIC)
+    mov w15, #0xf11a
+    bl burrow_qemu_virt_trigger_panic_fixture
+    b .Lactivation_wait
+#endif
+
     adrp x25, .Lactivation_diagnostic_prefix
     add x25, x25, :lo12:.Lactivation_diagnostic_prefix
     bl .Lactivation_write_string

@@ -60,6 +60,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/plans/aarch64-exception-reporting.md
     docs/plans/aarch64-generic-timer.md
     docs/plans/diagnostic-monitor.md
+    docs/plans/panic-assertion-paths.md
     docs/plans/phase-0-contracts.md
     docs/adr/0000-template.md
     docs/adr/0001-reference-target.md
@@ -89,6 +90,7 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/include/burrow/Core/TransitionPlan.h
     kernel/include/burrow/Core/KernelEntry.h
     kernel/include/burrow/Core/DiagnosticMonitor.h
+    kernel/include/burrow/Core/Panic.h
     kernel/include/burrow/Arch/AArch64/ExceptionFrame.h
     kernel/include/burrow/Arch/AArch64/ExceptionReporting.h
     kernel/include/burrow/Arch/AArch64/GenericTimer.h
@@ -96,6 +98,7 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/include/burrow/Drivers/Pl011.h
     kernel/include/burrow/Platform/QemuVirt/Console.h
     kernel/include/burrow/Platform/QemuVirt/Monitor.h
+    kernel/include/burrow/Platform/QemuVirt/Panic.h
     kernel/src/Arch/AArch64/EmergencyVectors.S
     kernel/src/Arch/AArch64/StableVectors.S
     kernel/src/Arch/AArch64/ExceptionReporting.cpp
@@ -107,11 +110,13 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/src/Arch/AArch64/Activation.S
     kernel/include/burrow/Arch/AArch64/PageTables.h
     kernel/src/Arch/AArch64/PageTables.cpp
+    kernel/src/Arch/AArch64/PanicTermination.S
     kernel/src/Arch/AArch64/TablePreparation.cpp
     kernel/src/Arch/AArch64/TransitionPreparation.cpp
     kernel/src/Core/ImageLayout.cpp
     kernel/src/Core/KernelEntry.cpp
     kernel/src/Core/DiagnosticMonitor.cpp
+    kernel/src/Core/Panic.cpp
     kernel/src/Core/TransitionPlan.cpp
     kernel/src/Drivers/Console.cpp
     kernel/src/Drivers/Pl011.cpp
@@ -121,6 +126,7 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/src/Platform/QemuVirt/Timer.cpp
     kernel/src/Platform/QemuVirt/KernelEntry.cpp
     kernel/src/Platform/QemuVirt/Monitor.cpp
+    kernel/src/Platform/QemuVirt/Panic.cpp
     kernel/src/Platform/QemuVirt/TestResult.S
     third_party/README.md
     third_party/edk2/LICENSE
@@ -146,6 +152,7 @@ add_custom_target(WarrenPlanning SOURCES
     tests/host/KernelEntryTests.cpp
     tests/host/ConsoleTests.cpp
     tests/host/DiagnosticMonitorTests.cpp
+    tests/host/PanicTests.cpp
     tests/host/Pl011Tests.cpp
     tests/host/QemuVirtConsoleTests.cpp
     tests/abi/KernelEntryAbiCheck.c
@@ -420,6 +427,27 @@ if(NOT CMAKE_CROSSCOMPILING)
         -Wpedantic
         -Werror
     )
+
+    add_library(WarrenPanic OBJECT
+        kernel/include/burrow/Core/Panic.h
+        kernel/src/Core/Panic.cpp
+    )
+    target_include_directories(WarrenPanic PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+    )
+    target_compile_options(WarrenPanic PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
     target_include_directories(WarrenConsole PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
     )
@@ -535,6 +563,25 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenDiagnosticMonitor
         COMMAND WarrenDiagnosticMonitorTests
+    )
+
+    add_executable(WarrenPanicTests
+        tests/host/PanicTests.cpp
+    )
+    target_link_libraries(WarrenPanicTests PRIVATE
+        WarrenPanic
+        WarrenConsole
+    )
+    target_compile_options(WarrenPanicTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenPanic
+        COMMAND WarrenPanicTests
     )
 
     add_executable(WarrenPl011Tests
@@ -855,6 +902,8 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         reported-breakpoint
         timer-initialization
         monitor
+        assertion
+        panic
     )
 
     if(WARREN_ENABLE_QEMU_TEST_RESULT AND
@@ -864,7 +913,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         )
     endif()
     if(NOT WARREN_AARCH64_ENTRY_FAULT MATCHES
-       "^(none|emergency|common-el1-vector|unsupported-feature|common-el1|planning|tables|activation|lower-guard|upper-guard|text-write|data-execute|stale-identity|identity-failure|kernel-entry|reported-breakpoint|timer-initialization|monitor)$")
+       "^(none|emergency|common-el1-vector|unsupported-feature|common-el1|planning|tables|activation|lower-guard|upper-guard|text-write|data-execute|stale-identity|identity-failure|kernel-entry|reported-breakpoint|timer-initialization|monitor|assertion|panic)$")
         message(FATAL_ERROR
             "WARREN_AARCH64_ENTRY_FAULT has an unsupported value"
         )
@@ -887,11 +936,13 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         kernel/src/Arch/AArch64/Entry.S
         kernel/src/Arch/AArch64/Normalization.S
         kernel/src/Arch/AArch64/PageTables.cpp
+        kernel/src/Arch/AArch64/PanicTermination.S
         kernel/src/Arch/AArch64/TablePreparation.cpp
         kernel/src/Arch/AArch64/TransitionPreparation.cpp
         kernel/src/Core/ImageLayout.cpp
         kernel/src/Core/KernelEntry.cpp
         kernel/src/Core/DiagnosticMonitor.cpp
+        kernel/src/Core/Panic.cpp
         kernel/src/Core/TransitionPlan.cpp
         kernel/src/Drivers/Console.cpp
         kernel/src/Drivers/Pl011.cpp
@@ -900,6 +951,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         kernel/src/Platform/QemuVirt/Timer.cpp
         kernel/src/Platform/QemuVirt/KernelEntry.cpp
         kernel/src/Platform/QemuVirt/Monitor.cpp
+        kernel/src/Platform/QemuVirt/Panic.cpp
         sdk/src/boot/BootInformationValidation.cpp
     )
     add_dependencies(BurrowImageObjects
@@ -967,7 +1019,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         string(REPLACE "-" "_" _burrow_entry_fault_upper
             "${_burrow_entry_fault_upper}")
         target_compile_definitions(BurrowImageObjects PRIVATE
-            $<$<COMPILE_LANGUAGE:ASM>:WARREN_AARCH64_FAULT_INJECT_${_burrow_entry_fault_upper}=1>
+            $<$<OR:$<COMPILE_LANGUAGE:ASM>,$<COMPILE_LANGUAGE:CXX>>:WARREN_AARCH64_FAULT_INJECT_${_burrow_entry_fault_upper}=1>
         )
     endif()
 

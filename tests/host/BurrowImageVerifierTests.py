@@ -28,9 +28,13 @@ from verify_burrow_image import (  # noqa: E402
     PROGRAM_HEADER,
     PROGRAM_TYPE_DYNAMIC,
     PROGRAM_TYPE_INTERPRETER,
+    PANIC_ASSERTION_FIXTURE_IDENTIFIER,
+    PANIC_KERNEL_FIXTURE_IDENTIFIER,
+    QEMU_ASSERTION_MARKER,
     QEMU_EXCEPTION_MARKER,
     QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE,
     QEMU_NORMALIZED_FAILURE_MARKER_TEMPLATE,
+    QEMU_PANIC_MARKER,
     QEMU_RESULT_ARGUMENTS,
     QEMU_RESULT_MARKERS,
     QEMU_SEMIHOST_HLT,
@@ -448,7 +452,8 @@ class BurrowImageFixtureTests(unittest.TestCase):
                 )
                 marker = QEMU_RESULT_MARKERS[mode]
                 arguments = QEMU_RESULT_ARGUMENTS[mode]
-                fixture.image[0x1180 : 0x1180 + len(marker)] = marker
+                if mode != "panic":
+                    fixture.image[0x1180 : 0x1180 + len(marker)] = marker
                 fixture.image[
                     0x170 : 0x170 + len(QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE)
                 ] = QEMU_FIRST_ENTRY_FAILURE_MARKER_TEMPLATE
@@ -458,6 +463,12 @@ class BurrowImageFixtureTests(unittest.TestCase):
                 fixture.image[
                     0x1D0 : 0x1D0 + len(QEMU_EXCEPTION_MARKER)
                 ] = QEMU_EXCEPTION_MARKER
+                fixture.image[
+                    0x1200 : 0x1200 + len(QEMU_ASSERTION_MARKER)
+                ] = QEMU_ASSERTION_MARKER
+                fixture.image[
+                    0x1280 : 0x1280 + len(QEMU_PANIC_MARKER)
+                ] = QEMU_PANIC_MARKER
                 fixture.image[0x1B0 : 0x1B0 + len(arguments)] = arguments
                 verify_image(bytes(fixture.image), qemu_test_result=mode)
 
@@ -473,12 +484,25 @@ class BurrowImageFixtureTests(unittest.TestCase):
                 "QEMU normalized-entry failure marker template must be absent",
             ),
             (QEMU_EXCEPTION_MARKER, "QEMU exception marker must be absent"),
+            (QEMU_ASSERTION_MARKER, "QEMU assertion marker must be absent"),
+            (QEMU_PANIC_MARKER, "QEMU panic marker must be absent"),
+            (
+                PANIC_ASSERTION_FIXTURE_IDENTIFIER,
+                "assertion fixture identifier must be absent",
+            ),
+            (
+                PANIC_KERNEL_FIXTURE_IDENTIFIER,
+                "kernel-panic fixture identifier must be absent",
+            ),
         ]
         for mode in QEMU_RESULT_MARKERS:
-            payloads.extend((
-                (QEMU_RESULT_MARKERS[mode], f"QEMU {mode} marker must be absent"),
-                (QEMU_RESULT_ARGUMENTS[mode], f"QEMU {mode} argument block must be absent"),
-            ))
+            if mode != "panic":
+                payloads.append(
+                    (QEMU_RESULT_MARKERS[mode], f"QEMU {mode} marker must be absent")
+                )
+            payloads.append(
+                (QEMU_RESULT_ARGUMENTS[mode], f"QEMU {mode} argument block must be absent")
+            )
         for payload, message in payloads:
             with self.subTest(message=message):
                 fixture = build_fixture()
@@ -500,6 +524,12 @@ class BurrowImageFixtureTests(unittest.TestCase):
         fixture.image[
             0x1D0 : 0x1D0 + len(QEMU_EXCEPTION_MARKER)
         ] = QEMU_EXCEPTION_MARKER
+        fixture.image[
+            0x1200 : 0x1200 + len(QEMU_ASSERTION_MARKER)
+        ] = QEMU_ASSERTION_MARKER
+        fixture.image[
+            0x1280 : 0x1280 + len(QEMU_PANIC_MARKER)
+        ] = QEMU_PANIC_MARKER
         with self.assertRaisesRegex(VerificationError, "QEMU pass marker must be exactly once"):
             verify_image(bytes(fixture.image), qemu_test_result="pass")
 

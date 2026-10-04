@@ -41,7 +41,11 @@ interrupt through that same complete frame, restores every GPR, returns with
 `ERET`, masks further IRQ delivery, and emits a bounded `BURROW_TIMER` proof.
 Burrow then advertises the fixed `help,status,exit` monitor, receives `status`
 and `exit` over PL011, reports the observed tick, and proceeds only after the
-bounded session exits successfully.
+bounded session exits successfully. A retained production panic entry now masks
+interrupts, classifies assertion and kernel-panic records separately, publishes
+one bounded `BURROW_PANIC_V1` line with a stable identifier and source location,
+and enters a nonreturning wait. Dedicated post-monitor fixtures prove assertions
+as `PANIC`/2 and kernel panics as `PANIC`/3 through the isolated test transport.
 
 ## Project Vocabulary
 
@@ -140,8 +144,9 @@ the reusable `BURROW_CONSOLE` diagnostic from C++, the one-shot
 ready/status/exit exchange over the same PL011, and the matching
 `BURROW_NORMALIZED_ENTRY` diagnostic after C++ returns. Separate
 target fixtures prove matching pass, explicit-failure, and panic serial/process
-results, every normalized failure allocation from 75 through 83, both stack
-guards, text-write and data-execute protection, and stale-identity removal.
+results, production assertion and kernel-panic paths, every normalized failure
+allocation from 75 through 83, both stack guards, text-write and data-execute
+protection, and stale-identity removal.
 UEFI fault fixtures prove rejection of malformed finalized handoff data and
 loader-side post-exit containment. Focused Burrow products do not contain that
 transport or any fault injection.

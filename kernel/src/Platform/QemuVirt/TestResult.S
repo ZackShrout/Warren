@@ -52,6 +52,30 @@ burrow_qemu_test_exception:
 .size burrow_qemu_test_exception, . - burrow_qemu_test_exception
 
 .p2align 2
+.global burrow_qemu_test_panic
+.hidden burrow_qemu_test_panic
+.type burrow_qemu_test_panic, %function
+burrow_qemu_test_panic:
+    mov x24, x1
+    cmp w0, #2
+    b.eq .Lselect_assertion_marker
+    cmp w0, #3
+    b.ne .Linvalid_failure_code_wait
+    adrp x25, .Lpanic_marker
+    add x25, x25, :lo12:.Lpanic_marker
+    b .Lpublish_panic_code
+.Lselect_assertion_marker:
+    adrp x25, .Lassertion_marker
+    add x25, x25, :lo12:.Lassertion_marker
+.Lpublish_panic_code:
+    adrp x6, burrow_qemu_exit_arguments
+    add x6, x6, :lo12:burrow_qemu_exit_arguments
+    uxtw x5, w0
+    str x5, [x6, #8]
+    b burrow_qemu_emit_result
+.size burrow_qemu_test_panic, . - burrow_qemu_test_panic
+
+.p2align 2
 .global burrow_qemu_test_failure
 .hidden burrow_qemu_test_failure
 .type burrow_qemu_test_failure, %function
@@ -160,10 +184,17 @@ burrow_qemu_emit_result:
 #elif defined(WARREN_QEMU_TEST_RESULT_FAIL)
     .asciz "WARREN_TEST:1:FAIL:aarch64-normalized-entry:64\r\n"
 #elif defined(WARREN_QEMU_TEST_RESULT_PANIC)
+.Lassertion_marker:
     .asciz "WARREN_TEST:1:PANIC:aarch64-normalized-entry:2\r\n"
 #endif
 .Lexception_marker:
     .asciz "WARREN_TEST:1:PANIC:aarch64-normalized-entry:4\r\n"
+#if !defined(WARREN_QEMU_TEST_RESULT_PANIC)
+.Lassertion_marker:
+    .asciz "WARREN_TEST:1:PANIC:aarch64-normalized-entry:2\r\n"
+#endif
+.Lpanic_marker:
+    .asciz "WARREN_TEST:1:PANIC:aarch64-normalized-entry:3\r\n"
 
 .section .data.burrow.qemu_test_result, "aw", %progbits
 .p2align 3
