@@ -21,7 +21,31 @@ namespace burrow::drivers {
 
         device.registers = registers;
         device.transmit_poll_limit = transmit_poll_limit;
+        device.receive_poll_limit = transmit_poll_limit;
         return pl011_error_t::success;
+    }
+
+    console_read_error_t read_pl011_byte(void* context, uint8_t& byte) noexcept
+    {
+        byte = 0;
+        if (context == nullptr) return console_read_error_t::input_failure;
+
+        auto& device{ *static_cast<pl011_device_t*>(context) };
+        if (device.registers == nullptr || device.receive_poll_limit == 0)
+            return console_read_error_t::input_failure;
+
+        for (uint32_t poll{ 0 }; poll < device.receive_poll_limit; ++poll)
+        {
+            if ((device.registers[k_pl011_flag_register_index] &
+                 k_pl011_receive_fifo_empty) != 0)
+                continue;
+
+            byte = static_cast<uint8_t>(
+                device.registers[k_pl011_data_register_index] & UINT32_C(0xff));
+            return console_read_error_t::success;
+        }
+
+        return console_read_error_t::timeout;
     }
 
     bool write_pl011_byte(void* context, uint8_t byte) noexcept
@@ -48,5 +72,10 @@ namespace burrow::drivers {
     console_writer_t make_pl011_writer(pl011_device_t& device) noexcept
     {
         return { &device, write_pl011_byte };
+    }
+
+    console_reader_t make_pl011_reader(pl011_device_t& device) noexcept
+    {
+        return { &device, read_pl011_byte };
     }
 } // namespace burrow::drivers

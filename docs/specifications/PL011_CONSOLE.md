@@ -9,14 +9,20 @@
 This contract begins after Burrow has installed and audited its owned EL1 page
 tables, transferred to the stable image and stack aliases, removed TTBR0
 identity mappings, and revalidated the complete boot-information object in
-architecture-neutral C++. It provides reusable, allocation-free output without
-replacing the independent assembly emergency or QEMU-result writers.
+architecture-neutral C++. It provides reusable, allocation-free polling input
+and output without replacing the independent assembly emergency or QEMU-result
+writers.
 
-The console is output-only and polling-only. It does not configure the UART,
-buffer output, allocate memory, take a lock, enable interrupts, or define log,
-panic, assertion, and exception-reporting policy.
+The console is polling-only. It does not configure the UART, buffer input or
+output, allocate memory, take a lock, enable interrupts, or define log, panic,
+assertion, and exception-reporting policy.
 
-## 2. Device-Class Writer
+## 2. Device-Class Reader And Writer
+
+`burrow::drivers::console_reader_t` contains an explicit borrowed context and a
+`noexcept` one-byte function. `read_console_byte()` clears the destination byte,
+validates the endpoint, and preserves distinct success, timeout,
+invalid-reader, and input-failure results.
 
 `burrow::drivers::console_writer_t` contains an explicit borrowed context and a
 `noexcept` one-byte function. `write_console()` accepts an exact byte count,
@@ -29,14 +35,18 @@ context lifetime and any later serialization policy.
 
 ## 3. PL011 Driver
 
-The driver accepts an aligned mapped register base and a nonzero transmit poll
-limit. For each byte it reads the 32-bit flag register at byte offset `0x18`.
+The driver accepts an aligned mapped register base and a nonzero polling limit.
+For each output byte it reads the 32-bit flag register at byte offset `0x18`.
 If `FR.TXFF` bit `0x20` is clear, it writes the byte as a 32-bit value to the
 data register at offset `0`. If the bit remains set for the complete polling
 budget, the write fails without modifying the data register.
 
-The initial polling budget is 1,000,000 flag reads per byte. This is a bounded
-early-boot diagnostic budget, not a scheduling or timing guarantee.
+For input it polls the same register until `FR.RXFE` bit `0x10` clears, then
+returns the low eight bits of the data register. Exhausting the budget reports
+timeout without inventing a byte. The general console budget is 1,000,000 flag
+reads per byte; the interactive monitor uses 100,000,000 so a host can respond
+after observing its ready marker. Both are finite diagnostic budgets, not
+scheduling or timing guarantees.
 
 ## 4. QEMU-Virt Selection
 
@@ -45,7 +55,7 @@ complete protocol validator. It nevertheless requires the early-console
 feature and exact contained-record shape before selecting:
 
 - kind `PL011`;
-- output capability and no unknown flags;
+- input and output capabilities and no unknown flags;
 - physical base `0x09000000`;
 - register stride 4 and width 32; and
 - zero reserved fields.
@@ -81,3 +91,19 @@ Both inherited EL1 and EL2 QEMU routes require the exact `BURROW_CONSOLE` line
 before accepting the existing `aarch64-normalized-entry` pass result. Focused
 ordinary images contain the reusable production console but no semihosting or
 test-result transport.
+
+## 7. Bounded Diagnostic Monitor
+
+After one handled physical-timer tick, Core emits
+`BURROW_MONITOR:ready:commands=help,status,exit`, then reads at most eight CR-
+or LF-terminated commands of at most 15 bytes each. `help` repeats the command
+set, `status` emits the nonzero observed timer tick, and `exit` emits an
+accepted record and returns success. Unknown and empty commands emit a fixed
+error and consume a slot. Timeout, endpoint failure, overflow, exhausted slots,
+invalid timer state, or output failure returns a typed error; the architecture
+boundary maps it to failure 83 or the ordinary masked wait.
+
+System tests wait for the ready record before writing `status\r` and `exit\r`
+to QEMU's PL011 input and require ready, status, and exit in that order before
+accepting normalized success. No shell grammar, editing, history, allocator,
+scheduler, IRQ-driven receive, or unbounded session is part of this contract.

@@ -6,6 +6,16 @@
 #include <burrow/Drivers/Console.h>
 
 namespace burrow::drivers {
+    console_read_error_t read_console_byte(
+        const console_reader_t& reader,
+        uint8_t& byte) noexcept
+    {
+        byte = 0;
+        if (reader.context == nullptr || reader.read_byte == nullptr)
+            return console_read_error_t::invalid_reader;
+        return reader.read_byte(reader.context, byte);
+    }
+
     console_write_error_t write_console(
         const console_writer_t& writer,
         const char* text,

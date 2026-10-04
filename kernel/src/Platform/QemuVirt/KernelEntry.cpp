@@ -28,9 +28,10 @@ extern "C" [[gnu::visibility("hidden")]] uint32_t burrow_kernel_entry(
         return 0;
 
     burrow::drivers::pl011_device_t device{};
+    burrow::drivers::console_reader_t input{};
     burrow::drivers::console_writer_t console{};
     if (burrow::platform::qemu_virt::select_early_console(
-            *boot_information, device, console) !=
+            *boot_information, device, input, console) !=
         burrow::platform::qemu_virt::console_selection_error_t::success)
         return 0;
 

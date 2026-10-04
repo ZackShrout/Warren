@@ -335,7 +335,7 @@ extern "C" EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE*
 
     const warren_boot_early_console_t early_console{
         WARREN_BOOT_CONSOLE_PL011,
-        WARREN_BOOT_CONSOLE_OUTPUT,
+        WARREN_BOOT_CONSOLE_INPUT | WARREN_BOOT_CONSOLE_OUTPUT,
         UINT64_C(0x09000000),
         4,
         32,

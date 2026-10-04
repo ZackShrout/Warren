@@ -117,7 +117,7 @@ Burrow at `EFI/WARREN/BURROW.ELF`. Only that combined image owns the current
 uses the test-only semihosting exit; the host requires both channels to agree.
 Dedicated pass, explicit-failure, and panic Burrow children prove the transport
 without adding it to the ordinary kernel image. Build-time-only Burrow children
-also prove exact failures 75–82 and take real stable-vector faults for both
+also prove exact failures 75–83 and take real stable-vector faults for both
 stack guards, text writes, data execution, and removed identity aliases.
 Separate UEFI fault fixtures prove Burrow rejects finalized header and console
 corruption and prove the loader's post-exit failure containment without
@@ -127,8 +127,10 @@ Loader diagnostics use the UEFI console only before the final memory-map
 transaction. After successful exit, the loader and Burrow witness use bounded
 direct PL011 writes under firmware's inherited identity mapping. This is not a
 reusable kernel console. After normalized entry, the production driver and
-device-class writer provide allocation-free output through the checked upper
-PL011 alias. The earlier assembly reporters remain independent so console
+device-class reader/writer provide allocation-free polling I/O through the
+checked upper PL011 alias. A fixed monitor accepts only `help`, `status`, and
+`exit`, with 15-byte command and eight-command session bounds. The earlier
+assembly reporters remain independent so console
 construction failures stay observable. The test-only semihosting path is absent
 from ordinary Burrow and UEFI products and is not a physical-machine interface.
 
@@ -362,9 +364,9 @@ EL2/EL1 normalization sequence is implemented under ADR-0011 and proven through
 both live firmware entry paths. Owned translation activation, higher-half
 transfer, and identity removal are also implemented and proven through both
 routes. The fixed architecture-neutral C++ boundary is also implemented and
-proven. The first platform-selected, allocation-free console output is also
-implemented and proven through both firmware routes; later kernel
-initialization remains.
+proven. Platform-selected, allocation-free console input/output, one handled
+timer interrupt, and the bounded diagnostic monitor are also implemented and
+proven through both firmware routes; later kernel initialization remains.
 
 Later decisions include the syscall ABI, kernel object model, scheduler policy,
 VFS semantics, libc strategy, service model, package format, graphics stack, and

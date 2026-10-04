@@ -12,6 +12,7 @@
 .equ IDENTITY_REMOVAL_FAILURE,     80
 .equ KERNEL_ENTRY_FAILURE,         81
 .equ TIMER_FAILURE,                82
+.equ MONITOR_FAILURE,              83
 
 .section .text.burrow_aarch64_activation, "ax", %progbits
 .p2align 2
@@ -298,6 +299,14 @@ burrow_aarch64_activate_translation:
     brk #0x77a
 #endif
 
+#if defined(WARREN_AARCH64_FAULT_INJECT_MONITOR)
+    mov w15, #0xf118
+    mov w0, #1
+#else
+    bl burrow_qemu_virt_run_monitor
+#endif
+    cbnz w0, .Lmonitor_failure
+
     adrp x25, .Lactivation_diagnostic_prefix
     add x25, x25, :lo12:.Lactivation_diagnostic_prefix
     bl .Lactivation_write_string
@@ -344,6 +353,16 @@ burrow_aarch64_activate_translation:
     msr DAIFSet, #2
     bl burrow_aarch64_disable_physical_timer
     mov w0, #TIMER_FAILURE
+#if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
+    b burrow_qemu_test_failure_stable
+#else
+    b .Lactivation_wait
+#endif
+
+.Lmonitor_failure:
+    msr DAIFSet, #2
+    bl burrow_aarch64_disable_physical_timer
+    mov w0, #MONITOR_FAILURE
 #if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
     b burrow_qemu_test_failure_stable
 #else

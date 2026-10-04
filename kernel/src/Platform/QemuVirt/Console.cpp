@@ -16,6 +16,7 @@ namespace burrow::platform::qemu_virt {
     console_selection_error_t select_early_console(
         const warren_boot_information_t& boot_information,
         drivers::pl011_device_t& device,
+        drivers::console_reader_t& reader,
         drivers::console_writer_t& writer) noexcept
     {
         if ((boot_information.present_features & WARREN_BOOT_FEATURE_EARLY_CONSOLE) == 0)
@@ -34,7 +35,8 @@ namespace burrow::platform::qemu_virt {
         const auto* record{ reinterpret_cast<const warren_boot_early_console_t*>(
             bytes + section.offset) };
         if (record->kind != WARREN_BOOT_CONSOLE_PL011 ||
-            (record->flags & WARREN_BOOT_CONSOLE_OUTPUT) == 0 ||
+            (record->flags & (WARREN_BOOT_CONSOLE_INPUT | WARREN_BOOT_CONSOLE_OUTPUT)) !=
+                (WARREN_BOOT_CONSOLE_INPUT | WARREN_BOOT_CONSOLE_OUTPUT) ||
             (record->flags & ~WARREN_BOOT_CONSOLE_KNOWN_FLAGS) != 0 ||
             record->physical_address != k_pl011_physical_address ||
             record->register_stride != sizeof(uint32_t) ||
@@ -52,6 +54,7 @@ namespace burrow::platform::qemu_virt {
         if (result != drivers::pl011_error_t::success)
             return console_selection_error_t::invalid_mapping;
 
+        reader = drivers::make_pl011_reader(device);
         writer = drivers::make_pl011_writer(device);
         return console_selection_error_t::success;
     }

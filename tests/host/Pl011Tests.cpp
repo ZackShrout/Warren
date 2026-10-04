@@ -36,6 +36,25 @@ int main()
         burrow::drivers::write_pl011_byte(&device, UINT8_C(0xa5)) ? 1 : 0,
         1);
     passed &= expect_u32("data register", registers[0], UINT32_C(0xa5));
+    passed &= expect_u32("receive poll limit", device.receive_poll_limit, 4);
+
+    registers[0] = UINT32_C(0x112233a5);
+    registers[burrow::drivers::k_pl011_flag_register_index] = 0;
+    uint8_t received{};
+    passed &= expect_u32(
+        "read available byte",
+        static_cast<uint32_t>(burrow::drivers::read_pl011_byte(&device, received)),
+        static_cast<uint32_t>(burrow::drivers::console_read_error_t::success));
+    passed &= expect_u32("received low byte", received, UINT8_C(0xa5));
+
+    registers[burrow::drivers::k_pl011_flag_register_index] =
+        burrow::drivers::k_pl011_receive_fifo_empty;
+    received = UINT8_C(0xff);
+    passed &= expect_u32(
+        "empty FIFO timeout",
+        static_cast<uint32_t>(burrow::drivers::read_pl011_byte(&device, received)),
+        static_cast<uint32_t>(burrow::drivers::console_read_error_t::timeout));
+    passed &= expect_u32("timeout clears byte", received, 0);
 
     registers[0] = UINT32_C(0x11223344);
     registers[burrow::drivers::k_pl011_flag_register_index] =
@@ -50,6 +69,23 @@ int main()
         "null context",
         burrow::drivers::write_pl011_byte(nullptr, UINT8_C(0x55)) ? 1 : 0,
         0);
+    passed &= expect_u32(
+        "null read context",
+        static_cast<uint32_t>(burrow::drivers::read_pl011_byte(nullptr, received)),
+        static_cast<uint32_t>(burrow::drivers::console_read_error_t::input_failure));
+
+    const burrow::drivers::console_reader_t reader{
+        burrow::drivers::make_pl011_reader(device)
+    };
+    const burrow::drivers::console_writer_t writer{
+        burrow::drivers::make_pl011_writer(device)
+    };
+    passed &= expect_u32("reader context", reader.context == &device ? 1 : 0, 1);
+    passed &= expect_u32(
+        "reader function",
+        reader.read_byte == burrow::drivers::read_pl011_byte ? 1 : 0,
+        1);
+    passed &= expect_u32("writer context", writer.context == &device ? 1 : 0, 1);
     passed &= expect_u32(
         "null registers",
         static_cast<uint32_t>(burrow::drivers::initialize_pl011(nullptr, 4, device)),

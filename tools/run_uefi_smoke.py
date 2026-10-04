@@ -5,11 +5,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
+import selectors
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 from warren_test_protocol import HostClassification, classify_process_result
 
@@ -34,6 +37,73 @@ def required_el_evidence(initial_el: str, evidence: str) -> tuple[bytes, ...]:
         markers.append(f"BURROW_FIRST_ENTRY:EL{level}:".encode("ascii"))
 
     return tuple(markers)
+
+
+def serial_input_bytes(lines: list[str]) -> bytes:
+    return b"".join(line.encode("ascii") + b"\r" for line in lines)
+
+
+def output_contains_in_order(output: bytes, markers: list[str]) -> bool:
+    cursor = 0
+    for marker_text in markers:
+        marker = marker_text.encode("ascii")
+        index = output.find(marker, cursor)
+        if index < 0:
+            return False
+        cursor = index + len(marker)
+    return True
+
+
+def run_with_serial_input(
+    command: list[str],
+    timeout: float,
+    marker: bytes,
+    input_bytes: bytes,
+) -> subprocess.CompletedProcess[bytes]:
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=0,
+    )
+    assert process.stdin is not None
+    assert process.stdout is not None
+
+    output = bytearray()
+    input_sent = False
+    deadline = time.monotonic() + timeout
+    selector = selectors.DefaultSelector()
+    selector.register(process.stdout, selectors.EVENT_READ)
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command, timeout, output=bytes(output))
+
+            events = selector.select(remaining)
+            if not events:
+                raise subprocess.TimeoutExpired(command, timeout, output=bytes(output))
+
+            chunk = os.read(process.stdout.fileno(), 4096)
+            if chunk:
+                output.extend(chunk)
+                if not input_sent and marker in output:
+                    process.stdin.write(input_bytes)
+                    process.stdin.flush()
+                    input_sent = True
+                continue
+
+            returncode = process.poll()
+            if returncode is not None:
+                return subprocess.CompletedProcess(command, returncode, bytes(output))
+    except subprocess.TimeoutExpired:
+        process.kill()
+        remainder, _ = process.communicate()
+        output.extend(remainder or b"")
+        raise subprocess.TimeoutExpired(command, timeout, output=bytes(output))
+    finally:
+        selector.close()
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -67,12 +137,30 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--require-output", action="append", default=[])
+    parser.add_argument("--require-output-in-order", action="append", default=[])
     parser.add_argument("--forbid-output", action="append", default=[])
+    parser.add_argument(
+        "--serial-input-after",
+        help="wait for this output marker before injecting serial input",
+    )
+    parser.add_argument(
+        "--serial-input-line",
+        action="append",
+        default=[],
+        help="ASCII line to send with a carriage-return terminator",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     arguments = parse_arguments()
+    if (arguments.serial_input_after is None) != (not arguments.serial_input_line):
+        print(
+            "serial input requires both --serial-input-after and at least one "
+            "--serial-input-line",
+            file=sys.stderr,
+        )
+        return 125
 
     with tempfile.TemporaryDirectory(prefix="warren-qemu-") as temporary_directory:
         variable_store = pathlib.Path(temporary_directory) / "edk2-vars.fd"
@@ -112,13 +200,21 @@ def main() -> int:
         ]
 
         try:
-            result = subprocess.run(
-                command,
-                check=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                timeout=arguments.timeout,
-            )
+            if arguments.serial_input_after is None:
+                result = subprocess.run(
+                    command,
+                    check=False,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=arguments.timeout,
+                )
+            else:
+                result = run_with_serial_input(
+                    command,
+                    arguments.timeout,
+                    arguments.serial_input_after.encode("ascii"),
+                    serial_input_bytes(arguments.serial_input_line),
+                )
         except subprocess.TimeoutExpired as error:
             output = error.stdout or ""
             if isinstance(output, str):
@@ -147,6 +243,13 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 3
+    if not output_contains_in_order(result.stdout, arguments.require_output_in_order):
+        print(
+            "UEFI smoke output is missing required ordered text: "
+            + ", ".join(arguments.require_output_in_order),
+            file=sys.stderr,
+        )
+        return 3
     for forbidden_text in arguments.forbid_output:
         forbidden = forbidden_text.encode("ascii")
         if forbidden in result.stdout:

@@ -39,6 +39,9 @@ recursive recovery. After the C++ witness succeeds, CPU 0 configures the
 QEMU-virt GICv3 and non-secure physical timer, receives exactly one PPI 30
 interrupt through that same complete frame, restores every GPR, returns with
 `ERET`, masks further IRQ delivery, and emits a bounded `BURROW_TIMER` proof.
+Burrow then advertises the fixed `help,status,exit` monitor, receives `status`
+and `exit` over PL011, reports the observed tick, and proceeds only after the
+bounded session exits successfully.
 
 ## Project Vocabulary
 
@@ -133,10 +136,11 @@ through the reviewed AArch64 boundary; Burrow then validates the directly
 observable entry state and reports the terminal result. The system-only Burrow
 children contain the QEMU result transport. Both live profiles must also emit
 the reusable `BURROW_CONSOLE` diagnostic from C++, the one-shot
-`BURROW_TIMER` diagnostic after a handled IRQ, and the matching
+`BURROW_TIMER` diagnostic after a handled IRQ, a bounded `BURROW_MONITOR`
+ready/status/exit exchange over the same PL011, and the matching
 `BURROW_NORMALIZED_ENTRY` diagnostic after C++ returns. Separate
 target fixtures prove matching pass, explicit-failure, and panic serial/process
-results, every normalized failure allocation from 75 through 82, both stack
+results, every normalized failure allocation from 75 through 83, both stack
 guards, text-write and data-execute protection, and stale-identity removal.
 UEFI fault fixtures prove rejection of malformed finalized handoff data and
 loader-side post-exit containment. Focused Burrow products do not contain that
@@ -147,7 +151,8 @@ successful exit, the loader and first-entry witness use minimal direct PL011
 output under the inherited firmware identity mapping. Those assembly paths are
 not reusable consoles. After owned translation is active and every identity
 mapping has been removed, platform C++ constructs the allocation-free PL011
-writer on the checked upper MMIO alias; the normalized assembly witness and
+reader and writer on the checked upper MMIO alias. Receive remains bounded and
+polling-only; the normalized assembly witness and
 test transport remain independent. Semihosting exists
 only in trusted QEMU test artifacts and is neither an ordinary shutdown path nor
 a physical-machine interface.

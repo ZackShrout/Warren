@@ -69,7 +69,9 @@ complete aliased object, selects the QEMU-virt PL011 through platform code, and
 emits the allocation-free `BURROW_CONSOLE` diagnostic before publishing the
 witness. The continuation then configures the fixed GICv3 aliases, arms the
 non-secure physical timer for one 100 Hz interval, waits for exactly one IRQ,
-and emits `BURROW_TIMER` before normalized success.
+and emits `BURROW_TIMER`. It then publishes the bounded monitor-ready record,
+accepts `status` and `exit` through PL011 input, and emits the ordered status
+and exit records before normalized success.
 
 ## 3. Load Image
 
@@ -332,7 +334,7 @@ is one of `pass`, `fail`, or `panic`; each mode chooses one exact terminal line
 and matching status block. The transport object lives under
 `kernel/src/Platform/QemuVirt` and is not compiled into ordinary Burrow.
 The same test object owns a bounded dynamic failure entry for witness codes
-65–82 and a dedicated architectural-exception entry for common `PANIC` code 4.
+65–83 and a dedicated architectural-exception entry for common `PANIC` code 4.
 The failure entry accepts only the allocated range and uses the QEMU-virt PL011
 base rather than trusting a rejected console record. The exception entry is
 reached only after the production reporter emits its architectural record. Both
