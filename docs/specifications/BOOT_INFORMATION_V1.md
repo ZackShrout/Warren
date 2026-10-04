@@ -412,3 +412,9 @@ At entry, Burrow owns or must preserve:
 `loader reclaimable`, `firmware reclaimable`, and `ACPI reclaimable` do not mean
 “immediately free.” Their named phase must finish before the physical allocator
 may reclassify them as usable.
+
+The implemented initial inventory consumes only entries already classified as
+`usable`, below the 64 TiB direct-map ceiling. It subtracts physical page zero
+and the full transition arena, preserves source-entry provenance, and does not
+reclassify reclaimable kinds. The boot-information object remains immutable.
+See `PHYSICAL_MEMORY.md` for allocation and publication rules.

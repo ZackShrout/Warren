@@ -336,7 +336,8 @@ The combined QEMU path emits `BEGIN:aarch64-normalized-entry`, the live loaded-i
 diagnostic, a direct post-`ExitBootServices()` loader line, Burrow's observed EL
 and boot-information address, the C++
 `BURROW_CONSOLE:driver=pl011:mode=polling:output=ready` diagnostic, the matching
-normalized-entry diagnostic after the Core witness, and
+`BURROW_MEMORY_V1` inventory/allocation diagnostic, the matching normalized-
+entry diagnostic after the Core witness, and
 `PASS:aarch64-normalized-entry`. Explicit
 `virtualization=off` and `virtualization=on` routes prove inherited EL1 and EL2.
 Burrow then uses the exact test-only `SYS_EXIT_EXTENDED` operation with status

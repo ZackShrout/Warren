@@ -268,7 +268,7 @@ The `aarch64-normalized-entry` test owns the remaining adjacent failure classes:
 | `78` | Table construction or descriptor audit |
 | `79` | Table activation or higher-half transfer proof |
 | `80` | Identity removal or surviving low reference |
-| `81` | Architecture-neutral C++ context or witness |
+| `81` | Architecture-neutral C++ context, physical-memory state, or witness |
 | `82` | GICv3, physical-timer, handled-IRQ, or timer diagnostic proof |
 | `83` | Diagnostic-monitor initialization, input, command bound, or output proof |
 

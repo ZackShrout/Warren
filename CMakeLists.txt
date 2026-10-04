@@ -62,6 +62,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/plans/diagnostic-monitor.md
     docs/plans/panic-assertion-paths.md
     docs/plans/symbolized-debug-workflow.md
+    docs/plans/physical-memory-inventory.md
     docs/plans/phase-0-contracts.md
     docs/adr/0000-template.md
     docs/adr/0001-reference-target.md
@@ -84,12 +85,14 @@ add_custom_target(WarrenPlanning SOURCES
     docs/specifications/AARCH64_LOADER_HANDOFF.md
     docs/specifications/AARCH64_NORMALIZED_ENTRY.md
     docs/specifications/BOOT_INFORMATION_V1.md
+    docs/specifications/PHYSICAL_MEMORY.md
     docs/specifications/PL011_CONSOLE.md
     docs/specifications/TEST_RESULT_PROTOCOL_V1.md
     boot/Platform/QemuVirt/PostExitTestResult.s
     kernel/linker/AArch64/burrow.ld
     kernel/include/burrow/Core/TransitionPlan.h
     kernel/include/burrow/Core/KernelEntry.h
+    kernel/include/burrow/Core/PhysicalMemory.h
     kernel/include/burrow/Core/DiagnosticMonitor.h
     kernel/include/burrow/Core/Panic.h
     kernel/include/burrow/Arch/AArch64/ExceptionFrame.h
@@ -116,6 +119,7 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/src/Arch/AArch64/TransitionPreparation.cpp
     kernel/src/Core/ImageLayout.cpp
     kernel/src/Core/KernelEntry.cpp
+    kernel/src/Core/PhysicalMemory.cpp
     kernel/src/Core/DiagnosticMonitor.cpp
     kernel/src/Core/Panic.cpp
     kernel/src/Core/TransitionPlan.cpp
@@ -154,6 +158,7 @@ add_custom_target(WarrenPlanning SOURCES
     tests/host/TransitionPlanTests.cpp
     tests/host/AArch64PageTableTests.cpp
     tests/host/KernelEntryTests.cpp
+    tests/host/PhysicalMemoryTests.cpp
     tests/host/ConsoleTests.cpp
     tests/host/DiagnosticMonitorTests.cpp
     tests/host/PanicTests.cpp
@@ -388,6 +393,28 @@ if(NOT CMAKE_CROSSCOMPILING)
         kernel/include/burrow/Core/KernelEntry.h
         kernel/src/Core/KernelEntry.cpp
     )
+
+    add_library(WarrenPhysicalMemory OBJECT
+        kernel/include/burrow/Core/PhysicalMemory.h
+        kernel/src/Core/PhysicalMemory.cpp
+    )
+    target_include_directories(WarrenPhysicalMemory PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
+    )
+    target_compile_options(WarrenPhysicalMemory PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
     target_include_directories(WarrenKernelEntry PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
@@ -530,6 +557,25 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenKernelEntry
         COMMAND WarrenKernelEntryTests
+    )
+
+    add_executable(WarrenPhysicalMemoryTests
+        tests/host/PhysicalMemoryTests.cpp
+    )
+    target_link_libraries(WarrenPhysicalMemoryTests PRIVATE
+        WarrenPhysicalMemory
+        WarrenConsole
+    )
+    target_compile_options(WarrenPhysicalMemoryTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenPhysicalMemory
+        COMMAND WarrenPhysicalMemoryTests
     )
 
     add_executable(WarrenConsoleTests
@@ -909,6 +955,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         stale-identity
         identity-failure
         kernel-entry
+        physical-memory
         reported-breakpoint
         timer-initialization
         monitor
@@ -923,7 +970,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         )
     endif()
     if(NOT WARREN_AARCH64_ENTRY_FAULT MATCHES
-       "^(none|emergency|common-el1-vector|unsupported-feature|common-el1|planning|tables|activation|lower-guard|upper-guard|text-write|data-execute|stale-identity|identity-failure|kernel-entry|reported-breakpoint|timer-initialization|monitor|assertion|panic)$")
+       "^(none|emergency|common-el1-vector|unsupported-feature|common-el1|planning|tables|activation|lower-guard|upper-guard|text-write|data-execute|stale-identity|identity-failure|kernel-entry|physical-memory|reported-breakpoint|timer-initialization|monitor|assertion|panic)$")
         message(FATAL_ERROR
             "WARREN_AARCH64_ENTRY_FAULT has an unsupported value"
         )
@@ -951,6 +998,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         kernel/src/Arch/AArch64/TransitionPreparation.cpp
         kernel/src/Core/ImageLayout.cpp
         kernel/src/Core/KernelEntry.cpp
+        kernel/src/Core/PhysicalMemory.cpp
         kernel/src/Core/DiagnosticMonitor.cpp
         kernel/src/Core/Panic.cpp
         kernel/src/Core/TransitionPlan.cpp

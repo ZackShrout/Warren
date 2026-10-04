@@ -328,10 +328,13 @@ record and construct the allocation-free PL011 reader and writer. Core emits:
 BURROW_CONSOLE:driver=pl011:mode=polling:output=ready
 ```
 
-Core writes its retained witness only after that complete line succeeds and
+Core then builds the bounded physical-memory inventory, subtracts page zero and
+the transition arena, reserves four pages aligned to four pages, and emits the
+`BURROW_MEMORY_V1` record specified in `PHYSICAL_MEMORY.md`. Core writes its
+retained witness only after both complete lines succeed and
 returns the exact `uint32_t` value `0x57415231`. Any other return is C++ context
-or console-publication failure. The exact reusable-console contract is in
-`PL011_CONSOLE.md`.
+or memory/console-publication failure. The exact reusable-console contract is
+in `PL011_CONSOLE.md`.
 
 After that value is checked, the architecture continuation proves one timer
 IRQ and enters the bounded diagnostic monitor. The monitor emits a ready record,
@@ -377,7 +380,7 @@ exceptions use common `PANIC` code 4:
 | 78 | Table construction or descriptor audit |
 | 79 | Table activation or higher-half transfer proof |
 | 80 | Identity removal or surviving low reference |
-| 81 | C++ entry context or witness result |
+| 81 | C++ entry context, physical-memory initialization/allocation, or witness result |
 | 82 | GICv3, physical-timer, handled-IRQ, or timer diagnostic proof |
 | 83 | Diagnostic-monitor initialization, input, command bound, or output proof |
 

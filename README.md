@@ -5,7 +5,8 @@ Burrow. The project begins on AArch64 under emulation, is designed to admit an
 x86-64 port, and ultimately aims to support native software development on
 Warren itself.
 
-Warren has completed **Phase 0: Foundation** and **Phase 1: First Light**.
+Warren has completed **Phase 0: Foundation** and **Phase 1: First Light** and
+has begun **Phase 2: Burrow Core**.
 The repository builds and independently audits Burrow's AArch64 ELF image, then
 packages its debug-stripped runtime copy beside Warren's UEFI bootloader. The
 bootloader opens that exact packaged file from its own boot device, validates it
@@ -31,7 +32,10 @@ TTBR0 with an empty root. It then constructs the fixed 64-byte entry context,
 calls architecture-neutral kernel C++, revalidates the aliased boot object,
 selects the validated QEMU-virt PL011 through platform code, emits a bounded
 allocation-free console diagnostic, writes the retained witness only after the
-complete line succeeds, and accepts only the exact success return. The owned
+complete line succeeds, constructs a fixed-capacity inventory from validated
+usable memory below the 64 TiB direct-map ceiling, excludes page zero and the
+transition arena, reserves the lowest aligned four-page boot extent, publishes
+`BURROW_MEMORY_V1`, and accepts only the exact success return. The owned
 stable EL1 vectors now preserve all 31 GPRs, interrupted SP, transition stage,
 and syndrome state in a fixed 320-byte ABI frame, emit a versioned bounded
 exception record through the reusable PL011 path, and terminate without
@@ -92,6 +96,7 @@ trustworthy platform on which those things can eventually be built.
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural-decision-record policy and decision index
 - [`docs/specifications/AARCH64_BURROW_IMAGE.md`](docs/specifications/AARCH64_BURROW_IMAGE.md) — implemented Burrow ELF and packaging contract
 - [`docs/specifications/AARCH64_NORMALIZED_ENTRY.md`](docs/specifications/AARCH64_NORMALIZED_ENTRY.md) — implemented register, mapping, and generic-entry contract
+- [`docs/specifications/PHYSICAL_MEMORY.md`](docs/specifications/PHYSICAL_MEMORY.md) — implemented normalized inventory and bounded boot-allocation contract
 - [`docs/specifications/PL011_CONSOLE.md`](docs/specifications/PL011_CONSOLE.md) — implemented allocation-free console and PL011 driver contract
 - [`CODE_STANDARDS.md`](CODE_STANDARDS.md) — Warren-specific C++ and assembly standards
 
