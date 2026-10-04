@@ -27,4 +27,4 @@ extern "C" uint32_t burrow_qemu_virt_start_timer() noexcept;
 extern "C" uint32_t burrow_aarch64_dispatch_irq(
     const burrow::arch::aarch64::exception_frame_t* frame) noexcept;
 extern "C" uint32_t burrow_qemu_virt_publish_timer_tick() noexcept;
-extern "C" uint64_t burrow_qemu_virt_timer_ticks;
+extern "C" [[gnu::visibility("hidden")]] uint64_t burrow_qemu_virt_timer_ticks;

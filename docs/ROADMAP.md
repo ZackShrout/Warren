@@ -61,11 +61,17 @@ The runway is reassessed after every merge.
    PPI 30 through the complete stable frame, restores all GPRs, and returns
    with `ERET` before publishing a bounded timer diagnostic. The completed
    plan is in [`plans/aarch64-generic-timer.md`](plans/aarch64-generic-timer.md).
+7. **Complete — `codex/diagnostic-monitor`: bounded serial interaction.** Burrow
+   receives bytes through PL011, advertises a fixed three-command monitor,
+   reports the proven timer tick, and requires an explicit `exit` before
+   normalized success. The completed plan is in
+   [`plans/diagnostic-monitor.md`](plans/diagnostic-monitor.md).
 
 The completed `foundation/phase-0-contracts`, `feature/burrow-image`,
 `feature/burrow-loader`, `feature/burrow-first-entry`,
 `feature/aarch64-normalized-entry`, `feature/pl011-console`,
-`feature/aarch64-exception-reporting`, and `codex/aarch64-generic-timer` plans
+`feature/aarch64-exception-reporting`, `codex/aarch64-generic-timer`, and
+`codex/diagnostic-monitor` plans
 remain available in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md),
 [`plans/burrow-image.md`](plans/burrow-image.md),
 [`plans/burrow-loader.md`](plans/burrow-loader.md),
@@ -73,7 +79,8 @@ remain available in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md),
 [`plans/aarch64-normalized-entry.md`](plans/aarch64-normalized-entry.md),
 [`plans/pl011-console.md`](plans/pl011-console.md),
 [`plans/aarch64-exception-reporting.md`](plans/aarch64-exception-reporting.md), and
-[`plans/aarch64-generic-timer.md`](plans/aarch64-generic-timer.md).
+[`plans/aarch64-generic-timer.md`](plans/aarch64-generic-timer.md), and
+[`plans/diagnostic-monitor.md`](plans/diagnostic-monitor.md).
 The implemented subordinate contracts are in
 [`specifications/AARCH64_BURROW_IMAGE.md`](specifications/AARCH64_BURROW_IMAGE.md),
 [`specifications/AARCH64_NORMALIZED_ENTRY.md`](specifications/AARCH64_NORMALIZED_ENTRY.md),
@@ -83,9 +90,8 @@ The implemented subordinate contracts are in
 and
 [`specifications/TEST_RESULT_PROTOCOL_V1.md`](specifications/TEST_RESULT_PROTOCOL_V1.md).
 
-The next likely slice is the tiny allocation-free diagnostic monitor. Its exact
-command and transport boundary will be chosen from the completed console,
-exception, and timer foundation.
+The next likely slice is the explicit panic and assertion path, built on the
+completed console, exception, timer, and monitor foundation.
 
 ## Phase 0 — Foundation
 
@@ -169,14 +175,18 @@ Completed Phase 1 evidence:
   `aarch64-normalized-entry` result; and
 - target failure fixtures for malformed finalized header and console data,
   loader post-exit containment, inherited and common/stable vector traps, every
-  normalized-entry failure code from 75 through 82, both stack guards, image
+  normalized-entry failure code from 75 through 83, both stack guards, image
   permissions, the removed identity alias, and isolated pass/fail/panic
   transport, with test machinery excluded from ordinary images; and
 - a platform-selected, allocation-free PL011 writer with bounded transmit
   polling, host driver and failure tests, and live EL1/EL2 C++ output evidence;
 - fixed Device-nGnRnE GICv3 distributor and CPU 0 redistributor mappings,
   bounded GIC bring-up, a validated 100 Hz physical-timer interval, full-frame
-  IRQ return, and live EL1/EL2 proof of exactly one PPI 30 tick.
+  IRQ return, and live EL1/EL2 proof of exactly one PPI 30 tick; and
+- a fixed-storage diagnostic monitor with bounded PL011 receive polling,
+  15-byte commands, an eight-command session limit, `help`, `status`, and
+  `exit`, plus live EL1/EL2 proof that status reports the handled tick before
+  exit permits normalized success.
 
 Exit demonstration:
 

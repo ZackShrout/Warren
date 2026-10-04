@@ -297,6 +297,10 @@ Flag bit 0 means output is supported; bit 1 means input is supported. Other flag
 bits are zero in version 1.0. PL011 records require output support, a nonzero
 physical address, register stride 4, and register width 32.
 
+The QEMU-virt reference producer advertises both input and output. Protocol v1
+still permits output-only PL011 records; a consumer that needs interaction must
+require the input capability before constructing a reader.
+
 This record describes a diagnostic mechanism. It does not grant the generic
 kernel ownership of QEMU addresses or make PL011 a universal architecture
 property; platform code validates and consumes it.

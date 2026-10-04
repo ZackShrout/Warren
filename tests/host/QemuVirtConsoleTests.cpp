@@ -42,7 +42,7 @@ namespace
         };
         console(fixture) = {
             WARREN_BOOT_CONSOLE_PL011,
-            WARREN_BOOT_CONSOLE_OUTPUT,
+            WARREN_BOOT_CONSOLE_INPUT | WARREN_BOOT_CONSOLE_OUTPUT,
             burrow::platform::qemu_virt::k_pl011_physical_address,
             sizeof(uint32_t),
             32,
@@ -69,9 +69,10 @@ namespace
     [[nodiscard]] uint32_t select(fixture_t& fixture) noexcept
     {
         burrow::drivers::pl011_device_t device{};
+        burrow::drivers::console_reader_t reader{};
         burrow::drivers::console_writer_t writer{};
         return static_cast<uint32_t>(burrow::platform::qemu_virt::select_early_console(
-            header(fixture), device, writer));
+            header(fixture), device, reader, writer));
     }
 }
 
@@ -81,11 +82,12 @@ int main()
 
     fixture_t fixture{ make_fixture() };
     burrow::drivers::pl011_device_t device{};
+    burrow::drivers::console_reader_t reader{};
     burrow::drivers::console_writer_t writer{};
     bool passed{ expect_u64(
         "valid console",
         static_cast<uint32_t>(burrow::platform::qemu_virt::select_early_console(
-            header(fixture), device, writer)),
+            header(fixture), device, reader, writer)),
         static_cast<uint32_t>(console_selection_error_t::success)) };
     passed &= expect_u64(
         "stable virtual alias",
@@ -93,6 +95,12 @@ int main()
         burrow::platform::qemu_virt::k_pl011_virtual_address);
     passed &= expect_u64("poll limit", device.transmit_poll_limit,
                          burrow::drivers::k_pl011_default_poll_limit);
+    passed &= expect_u64("receive poll limit", device.receive_poll_limit,
+                         burrow::drivers::k_pl011_default_poll_limit);
+    passed &= expect_u64("reader context", reader.context == &device ? 1 : 0, 1);
+    passed &= expect_u64("reader function",
+                         reader.read_byte == burrow::drivers::read_pl011_byte ? 1 : 0,
+                         1);
     passed &= expect_u64("writer context", writer.context == &device ? 1 : 0, 1);
     passed &= expect_u64("writer function",
                          writer.write_byte == burrow::drivers::write_pl011_byte ? 1 : 0,
@@ -117,6 +125,10 @@ int main()
     fixture = make_fixture();
     console(fixture).flags = WARREN_BOOT_CONSOLE_INPUT;
     passed &= expect_u64("missing output", select(fixture),
+                         static_cast<uint32_t>(console_selection_error_t::unsupported_console));
+    fixture = make_fixture();
+    console(fixture).flags = WARREN_BOOT_CONSOLE_OUTPUT;
+    passed &= expect_u64("missing input", select(fixture),
                          static_cast<uint32_t>(console_selection_error_t::unsupported_console));
     fixture = make_fixture();
     console(fixture).flags |= UINT32_C(0x80000000);

@@ -164,6 +164,7 @@ AARCH64_FAULT_SENTINELS = {
     "common-el1-vector": "mov w15, #0xf115",
     "reported-breakpoint": "mov w15, #0xf116",
     "timer-initialization": "mov w15, #0xf117",
+    "monitor": "mov w15, #0xf118",
 }
 
 AARCH64_FAULT_OPERATIONS = {
@@ -183,6 +184,7 @@ AARCH64_FAULT_OPERATIONS = {
     "common-el1-vector": "brk #0x779",
     "reported-breakpoint": "brk #0x77a",
     "timer-initialization": "mov w0, #0x1",
+    "monitor": "mov w0, #0x1",
 }
 
 _FORBIDDEN_PROGRAM_TYPES = {
@@ -1907,6 +1909,7 @@ def verify_activation_disassembly(
     image: pathlib.Path,
     *,
     qemu_test_result: str | None,
+    aarch64_entry_fault: str | None,
 ) -> None:
     result = subprocess.run(
         [
@@ -1932,8 +1935,7 @@ def verify_activation_disassembly(
     if not instructions:
         raise VerificationError("AArch64 activation disassembly is empty")
 
-    cursor = 0
-    for fragment in (
+    ordered_fragments = [
         "burrow_aarch64_preflight_activation",
         "dsb sy",
         "msr MAIR_EL1, x9",
@@ -1981,7 +1983,12 @@ def verify_activation_disassembly(
         "sevl",
         "wfe",
         "burrow_qemu_virt_publish_timer_tick",
-    ):
+    ]
+    if aarch64_entry_fault != "monitor":
+        ordered_fragments.append("burrow_qemu_virt_run_monitor")
+
+    cursor = 0
+    for fragment in ordered_fragments:
         while cursor < len(instructions) and fragment not in instructions[cursor]:
             cursor += 1
         if cursor == len(instructions):
@@ -2006,7 +2013,7 @@ def verify_activation_disassembly(
     ]
     expected = 1 if qemu_test_result is not None else 0
     if len(result_branches) != expected or len(low_failure_branches) != expected or \
-            len(stable_failure_branches) != 3 * expected:
+            len(stable_failure_branches) != 4 * expected:
         raise VerificationError("activation has an unexpected QEMU transport branch")
 
     boundary_begin = next(
@@ -2118,7 +2125,7 @@ def verify_qemu_result_disassembly(
 
     for fragment in (
         "cmp w0, #0x41",
-        "cmp w0, #0x52",
+        "cmp w0, #0x53",
         "mov x24, #0x9000000",
         "udiv w7, w19, w6",
         "msub w8, w7, w6, w19",
@@ -2287,6 +2294,7 @@ def main() -> int:
             arguments.objdump,
             arguments.image,
             qemu_test_result=arguments.qemu_test_result,
+            aarch64_entry_fault=arguments.aarch64_entry_fault,
         )
         verify_qemu_result_disassembly(
             arguments.objdump,

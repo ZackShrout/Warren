@@ -322,7 +322,7 @@ SP is 16-byte aligned, DAIF remains masked, and FP/SIMD is unavailable. The
 extern-C function uses only the fixed Core-owned context at its assembly ABI.
 It asks Core to revalidate the aliased complete object and all context
 invariants, then asks QEMU-virt platform code to consume the validated console
-record and construct the allocation-free PL011 writer. Core emits:
+record and construct the allocation-free PL011 reader and writer. Core emits:
 
 ```text
 BURROW_CONSOLE:driver=pl011:mode=polling:output=ready
@@ -333,7 +333,10 @@ returns the exact `uint32_t` value `0x57415231`. Any other return is C++ context
 or console-publication failure. The exact reusable-console contract is in
 `PL011_CONSOLE.md`.
 
-Only after that value is checked may the architecture continuation emit:
+After that value is checked, the architecture continuation proves one timer
+IRQ and enters the bounded diagnostic monitor. The monitor emits a ready record,
+accepts `status` and `exit` through PL011 input, reports the observed tick, and
+must return success. Only then may the continuation emit:
 
 ```text
 BURROW_NORMALIZED_ENTRY:initial=EL1:normalized=EL1:tables=owned:identity=removed:cpp=arrived
@@ -359,6 +362,7 @@ exceptions use common `PANIC` code 4:
 | 80 | Identity removal or surviving low reference |
 | 81 | C++ entry context or witness result |
 | 82 | GICv3, physical-timer, handled-IRQ, or timer diagnostic proof |
+| 83 | Diagnostic-monitor initialization, input, command bound, or output proof |
 
 The authoritative QEMU machine arguments are exactly:
 
@@ -394,14 +398,15 @@ PL011 driver, QEMU-virt selection, complete exception formatting, and the
 exception-frame ABI. Live tests
 cover both initial exception levels, emergency faults at inherited EL1/EL2, a
 common-EL1 fault before table activation, every assigned failure from 75
-through 82, and stable-vector faults for both guards, text-write, data-execute,
+through 83, and stable-vector faults for both guards, text-write, data-execute,
 and stale-identity probes. Stable protection probes require the exact stage-8
 ESR class and, for both guards, the exact fault address. A post-C++ breakpoint
 requires stage 9, the exact BRK syndrome, its preserved x15 sentinel, x30, and
 `PANIC`/4. Both successful routes also require the exact reusable-console
 diagnostic and one
-`BURROW_TIMER:source=cntp:interrupt=30:ticks=1:frequency=...` record before
-normalized success. The timer is a 100 Hz one-shot; only current-EL SPx IRQ
+`BURROW_TIMER:source=cntp:interrupt=30:ticks=1:frequency=...` record before the
+ordered monitor ready/status/exit records and normalized success. The timer is
+a 100 Hz one-shot; only current-EL SPx IRQ
 vector 5 and interrupt ID 30 return. All other stable vectors and unhandled
 IRQs remain terminal.
 

@@ -28,5 +28,6 @@ namespace burrow::platform::qemu_virt {
     [[nodiscard]] console_selection_error_t select_early_console(
         const warren_boot_information_t& boot_information,
         drivers::pl011_device_t& device,
+        drivers::console_reader_t& reader,
         drivers::console_writer_t& writer) noexcept;
 } // namespace burrow::platform::qemu_virt

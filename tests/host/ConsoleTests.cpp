@@ -18,6 +18,23 @@ namespace
         uint32_t fail_at{ UINT32_MAX };
     };
 
+    struct input_t
+    {
+        uint8_t byte;
+        burrow::drivers::console_read_error_t result;
+    };
+
+    [[nodiscard]] burrow::drivers::console_read_error_t read_byte(
+        void* context,
+        uint8_t& byte) noexcept
+    {
+        if (context == nullptr)
+            return burrow::drivers::console_read_error_t::input_failure;
+        const auto& input{ *static_cast<input_t*>(context) };
+        byte = input.byte;
+        return input.result;
+    }
+
     [[nodiscard]] bool capture_byte(void* context, uint8_t byte) noexcept
     {
         if (context == nullptr) return false;
@@ -44,6 +61,7 @@ namespace
 
 int main()
 {
+    using burrow::drivers::console_read_error_t;
     using burrow::drivers::console_write_error_t;
 
     capture_t capture{};
@@ -83,6 +101,38 @@ int main()
         static_cast<uint32_t>(console_write_error_t::output_failure));
     passed &= expect_u32("mid-write byte count", capture.byte_count, 3);
     passed &= expect_u32("mid-write prefix", std::strcmp(capture.bytes, "abc"), 0);
+
+    input_t input{ UINT8_C(0xa5), console_read_error_t::success };
+    const burrow::drivers::console_reader_t reader{ &input, read_byte };
+    uint8_t byte{};
+    passed &= expect_u32(
+        "exact read",
+        static_cast<uint32_t>(burrow::drivers::read_console_byte(reader, byte)),
+        static_cast<uint32_t>(console_read_error_t::success));
+    passed &= expect_u32("exact read byte", byte, UINT8_C(0xa5));
+
+    byte = UINT8_C(0xff);
+    const burrow::drivers::console_reader_t null_read_context{ nullptr, read_byte };
+    passed &= expect_u32(
+        "null read context",
+        static_cast<uint32_t>(
+            burrow::drivers::read_console_byte(null_read_context, byte)),
+        static_cast<uint32_t>(console_read_error_t::invalid_reader));
+    passed &= expect_u32("invalid reader clears byte", byte, 0);
+    const burrow::drivers::console_reader_t null_read_function{ &input, nullptr };
+    passed &= expect_u32(
+        "null read function",
+        static_cast<uint32_t>(
+            burrow::drivers::read_console_byte(null_read_function, byte)),
+        static_cast<uint32_t>(console_read_error_t::invalid_reader));
+
+    input.result = console_read_error_t::timeout;
+    byte = UINT8_C(0xff);
+    passed &= expect_u32(
+        "read timeout",
+        static_cast<uint32_t>(burrow::drivers::read_console_byte(reader, byte)),
+        static_cast<uint32_t>(console_read_error_t::timeout));
+    passed &= expect_u32("callback controls timeout byte", byte, UINT8_C(0xa5));
 
     if (!passed) return 1;
     std::puts("Warren console tests passed.");

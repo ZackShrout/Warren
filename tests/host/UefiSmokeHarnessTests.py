@@ -12,7 +12,12 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "tools"))
 
-from run_uefi_smoke import machine_configuration, required_el_evidence  # noqa: E402
+from run_uefi_smoke import (  # noqa: E402
+    machine_configuration,
+    output_contains_in_order,
+    required_el_evidence,
+    serial_input_bytes,
+)
 
 
 class InitialExceptionLevelProfileTests(unittest.TestCase):
@@ -45,6 +50,14 @@ class InitialExceptionLevelProfileTests(unittest.TestCase):
 
     def test_no_evidence_is_available_before_post_exit_transfer(self) -> None:
         self.assertEqual(required_el_evidence("el1", "none"), ())
+
+    def test_serial_input_uses_carriage_return_terminated_ascii_lines(self) -> None:
+        self.assertEqual(serial_input_bytes(["status", "exit"]), b"status\rexit\r")
+
+    def test_output_order_requires_every_marker_in_sequence(self) -> None:
+        output = b"ready status exit"
+        self.assertTrue(output_contains_in_order(output, ["ready", "status", "exit"]))
+        self.assertFalse(output_contains_in_order(output, ["ready", "exit", "status"]))
 
 
 if __name__ == "__main__":

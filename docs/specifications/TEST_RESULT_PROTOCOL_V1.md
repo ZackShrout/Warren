@@ -240,8 +240,8 @@ failure codes:
 | `72` | Early-console record |
 | `73` | Loader post-exit failure containment fixture |
 
-The bounded dynamic reporter accepts codes 65–82. Codes 65–73 retain the
-`burrow-first-entry` identifier; codes 74–82 select
+The bounded dynamic reporter accepts codes 65–83. Codes 65–73 retain the
+`burrow-first-entry` identifier; codes 74–83 select
 `aarch64-normalized-entry`. The reporter uses the reference machine's fixed
 PL011 independently of a rejected object before activation and the checked
 upper MMIO alias after identity removal. Ordinary Burrow images retain the same
@@ -270,6 +270,7 @@ The `aarch64-normalized-entry` test owns the remaining adjacent failure classes:
 | `80` | Identity removal or surviving low reference |
 | `81` | Architecture-neutral C++ context or witness |
 | `82` | GICv3, physical-timer, handled-IRQ, or timer diagnostic proof |
+| `83` | Diagnostic-monitor initialization, input, command bound, or output proof |
 
 Architectural traps at emergency or stable vectors continue to use common
 `PANIC` code 4. The implementation does not emit
@@ -277,7 +278,7 @@ Architectural traps at emergency or stable vectors continue to use common
 value; that witness cannot succeed until the complete reusable-console line has
 been emitted.
 
-Dedicated build-time-only target fixtures route each code 75–82 through the
+Dedicated build-time-only target fixtures route each code 75–83 through the
 same bounded reporter used by its production failure class. Separate stable-
 vector fixtures access both unmapped guard pages, attempt a write to executable
 read-only text, branch to writable execute-never data, and access a removed

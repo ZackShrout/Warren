@@ -53,6 +53,7 @@ set(_warren_aarch64_faults
     kernel-entry
     reported-breakpoint
     timer-initialization
+    monitor
 )
 set(_warren_uefi_build "${_warren_product_root}/uefi")
 set(_warren_uefi_first_entry_fault_build "${_warren_product_root}/uefi-first-entry-fault")
@@ -501,7 +502,13 @@ add_test(
         --expected-test aarch64-normalized-entry
         --require-output "BURROW_CONSOLE:driver=pl011:mode=polling:output=ready"
         --require-output "BURROW_TIMER:source=cntp:interrupt=30:ticks=1:frequency="
-        --require-output "BURROW_NORMALIZED_ENTRY:initial=EL1:normalized=EL1:tables=owned:identity=removed:cpp=arrived"
+        --serial-input-after "BURROW_MONITOR:ready:"
+        --serial-input-line status
+        --serial-input-line exit
+        --require-output-in-order "BURROW_MONITOR:ready:commands=help,status,exit"
+        --require-output-in-order "BURROW_MONITOR:status=ok:timer_ticks=1"
+        --require-output-in-order "BURROW_MONITOR:exit=accepted"
+        --require-output-in-order "BURROW_NORMALIZED_ENTRY:initial=EL1:normalized=EL1:tables=owned:identity=removed:cpp=arrived"
 )
 set_tests_properties(WarrenSystemAArch64NormalizedEntryEl1 PROPERTIES TIMEOUT 40)
 
@@ -517,7 +524,13 @@ add_test(
         --expected-test aarch64-normalized-entry
         --require-output "BURROW_CONSOLE:driver=pl011:mode=polling:output=ready"
         --require-output "BURROW_TIMER:source=cntp:interrupt=30:ticks=1:frequency="
-        --require-output "BURROW_NORMALIZED_ENTRY:initial=EL2:normalized=EL1:tables=owned:identity=removed:cpp=arrived"
+        --serial-input-after "BURROW_MONITOR:ready:"
+        --serial-input-line status
+        --serial-input-line exit
+        --require-output-in-order "BURROW_MONITOR:ready:commands=help,status,exit"
+        --require-output-in-order "BURROW_MONITOR:status=ok:timer_ticks=1"
+        --require-output-in-order "BURROW_MONITOR:exit=accepted"
+        --require-output-in-order "BURROW_NORMALIZED_ENTRY:initial=EL2:normalized=EL1:tables=owned:identity=removed:cpp=arrived"
 )
 set_tests_properties(WarrenSystemAArch64NormalizedEntryEl2 PROPERTIES TIMEOUT 40)
 
@@ -665,6 +678,12 @@ warren_add_aarch64_fault_test(
     --forbid-output "BURROW_TIMER:"
     --forbid-output "BURROW_NORMALIZED_ENTRY:"
 )
+warren_add_aarch64_fault_test(
+    WarrenSystemRejectsMonitor
+    monitor fail 83
+    --forbid-output "BURROW_MONITOR:"
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
 
 add_test(
     NAME WarrenSystemQemuResultFailure
@@ -677,6 +696,12 @@ add_test(
         --initial-el el1
         --expected-test aarch64-normalized-entry
         --expected-result fail
+        --serial-input-after "BURROW_MONITOR:ready:"
+        --serial-input-line status
+        --serial-input-line exit
+        --require-output-in-order "BURROW_MONITOR:ready:commands=help,status,exit"
+        --require-output-in-order "BURROW_MONITOR:status=ok:timer_ticks=1"
+        --require-output-in-order "BURROW_MONITOR:exit=accepted"
 )
 set_tests_properties(WarrenSystemQemuResultFailure PROPERTIES TIMEOUT 40)
 
@@ -691,6 +716,12 @@ add_test(
         --initial-el el1
         --expected-test aarch64-normalized-entry
         --expected-result panic
+        --serial-input-after "BURROW_MONITOR:ready:"
+        --serial-input-line status
+        --serial-input-line exit
+        --require-output-in-order "BURROW_MONITOR:ready:commands=help,status,exit"
+        --require-output-in-order "BURROW_MONITOR:status=ok:timer_ticks=1"
+        --require-output-in-order "BURROW_MONITOR:exit=accepted"
 )
 set_tests_properties(WarrenSystemQemuResultPanic PROPERTIES TIMEOUT 40)
 
