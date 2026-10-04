@@ -8,13 +8,13 @@
 #include <warren/boot/BootInformation.h>
 #include <warren/boot/BootInformationValidation.h>
 
-extern "C" [[gnu::visibility("hidden")]] [[gnu::used]] uint64_t
-    burrow_kernel_entry_retained_witness{};
-
 namespace burrow::core {
     namespace {
         constexpr uint64_t k_page_size{ 4096 };
         constexpr uint64_t k_upper_address_bit{ UINT64_C(1) << 63 };
+        constexpr char k_console_ready_message[]{
+            "BURROW_CONSOLE:driver=pl011:mode=polling:output=ready\r\n"
+        };
 
         [[nodiscard]] bool is_upper_address(uint64_t address) noexcept
         {
@@ -56,15 +56,12 @@ namespace burrow::core {
         }
     } // anonymous namespace
 
-    uint32_t validate_kernel_entry(
+    kernel_entry_error_t validate_kernel_entry(
         const KernelEntryContext& context,
-        const void* readable_boot_information,
-        volatile uint64_t* writable_witness) noexcept
+        const void* readable_boot_information) noexcept
     {
-        if (!valid_context(context) || readable_boot_information == nullptr ||
-            writable_witness == nullptr ||
-            (reinterpret_cast<uintptr_t>(writable_witness) & (alignof(uint64_t) - 1)) != 0)
-            return 0;
+        if (!valid_context(context) || readable_boot_information == nullptr)
+            return kernel_entry_error_t::invalid_context;
 
         const auto validation_result{ warren::boot::validate_boot_information(
             readable_boot_information,
@@ -72,33 +69,34 @@ namespace burrow::core {
             context.boot_information_physical_address)
         };
         if (validation_result != warren::boot::boot_information_error_t::success)
-            return 0;
+            return kernel_entry_error_t::invalid_boot_information;
 
         const auto* boot_information{
             static_cast<const warren_boot_information_t*>(readable_boot_information)
         };
         if (boot_information->total_size != context.boot_information_byte_count)
+            return kernel_entry_error_t::invalid_boot_information;
+
+        return kernel_entry_error_t::success;
+    }
+
+    uint32_t publish_kernel_entry(
+        const drivers::console_writer_t& console,
+        volatile uint64_t* writable_witness) noexcept
+    {
+        if (writable_witness == nullptr ||
+            (reinterpret_cast<uintptr_t>(writable_witness) & (alignof(uint64_t) - 1)) != 0)
+            return 0;
+
+        const drivers::console_write_error_t console_result{ drivers::write_console(
+            console,
+            k_console_ready_message,
+            sizeof(k_console_ready_message) - 1)
+        };
+        if (console_result != drivers::console_write_error_t::success)
             return 0;
 
         *writable_witness = k_kernel_entry_witness;
         return k_kernel_entry_success;
     }
 } // namespace burrow::core
-
-extern "C" [[gnu::visibility("hidden")]] uint32_t burrow_kernel_entry(
-    const burrow::core::KernelEntryContext* context) noexcept
-{
-    const uintptr_t context_address{ reinterpret_cast<uintptr_t>(context) };
-    if (context == nullptr || (context_address & (UINT64_C(1) << 63)) == 0 ||
-        (context_address & (alignof(burrow::core::KernelEntryContext) - 1)) != 0 ||
-        context_address > UINT64_MAX - sizeof(*context) ||
-        ((context_address + sizeof(*context) - 1) & (UINT64_C(1) << 63)) == 0)
-        return 0;
-
-    return burrow::core::validate_kernel_entry(
-        *context,
-        reinterpret_cast<const void*>(
-            static_cast<uintptr_t>(context->boot_information_address)),
-        reinterpret_cast<volatile uint64_t*>(
-            static_cast<uintptr_t>(context->retained_witness_address)));
-}

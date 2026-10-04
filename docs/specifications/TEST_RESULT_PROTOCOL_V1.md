@@ -217,7 +217,9 @@ first-entry witness has checked the directly observable contract. Burrow must
 then remove inherited firmware translation, reach common MMU-off EL1h, build
 and audit its fixed-capacity tables, activate the owned regime, transfer to the
 higher half, remove identity mappings, and receive the exact retained witness
-result from architecture-neutral C++. Burrow then
+result from architecture-neutral C++. Before publishing that witness, Core must
+emit `BURROW_CONSOLE:driver=pl011:mode=polling:output=ready` through the
+platform-selected production writer. Burrow then
 requests `SYS_EXIT_EXTENDED` status zero. The host accepts the test only when the
 serial terminal record and QEMU status agree. Focused non-test Burrow artifacts
 contain neither the terminal marker, semihosting argument block, nor trap.
@@ -271,7 +273,8 @@ The `aarch64-normalized-entry` test owns the remaining adjacent failure classes:
 Architectural traps at emergency or stable vectors continue to use common
 `PANIC` code 4. The implementation does not emit
 `PASS:aarch64-normalized-entry` until the C++ witness returns its exact success
-value.
+value; that witness cannot succeed until the complete reusable-console line has
+been emitted.
 
 Dedicated build-time-only target fixtures route each code 75–81 through the
 same bounded reporter used by its production failure class. Separate stable-

@@ -1,7 +1,7 @@
 # Warren Architecture
 
 **Status:** Phase 0 contracts accepted; Phase 1 normalized higher-half entry
-implemented through architecture-neutral C++ arrival
+and allocation-free PL011 output implemented through architecture-neutral C++
 
 **Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
 
@@ -19,6 +19,9 @@ owned translation hierarchy, activates it, transfers to the stable image,
 installs the owned vectors and guarded stack, and removes every TTBR0 identity
 mapping. It constructs the fixed Core entry context, revalidates the aliased
 boot object in architecture-neutral C++, and retains the successful witness.
+QEMU-virt platform code selects the validated PL011 record and gives Core a
+bounded polling writer over the explicit stable MMIO alias. Core publishes the
+first reusable console diagnostic before the witness can succeed.
 Stable decisions are
 recorded in `docs/adr/`, and exact subordinate formats live in
 `docs/specifications/`.
@@ -123,8 +126,11 @@ entering Burrow.
 Loader diagnostics use the UEFI console only before the final memory-map
 transaction. After successful exit, the loader and Burrow witness use bounded
 direct PL011 writes under firmware's inherited identity mapping. This is not a
-reusable kernel console. The test-only semihosting path is absent from ordinary
-Burrow and UEFI products and is not a physical-machine interface.
+reusable kernel console. After normalized entry, the production driver and
+device-class writer provide allocation-free output through the checked upper
+PL011 alias. The earlier assembly reporters remain independent so console
+construction failures stay observable. The test-only semihosting path is absent
+from ordinary Burrow and UEFI products and is not a physical-machine interface.
 
 Burrow is built as a static position-independent ELF64 `ET_DYN` image with
 separate read-only, executable, and writable load pages. The current minimal
@@ -184,10 +190,10 @@ docs/
   adr/                  architectural decision records
 ```
 
-Directories appear only when their first owned artifact exists. The initial
-`kernel/src/Core`, `kernel/src/Arch/AArch64`, and `kernel/linker/AArch64`
-directories now contain the image layout sentinels, reviewed first-entry
-witness, and audited linker script; later directories remain planned.
+Directories appear only when their first owned artifact exists. Core,
+AArch64, Drivers, and QEMU-virt Platform now contain the normalized entry and
+allocation-free console implementation. Other planned directories remain
+absent until their first owned artifact exists.
 
 ## Portability Layers
 
@@ -350,7 +356,9 @@ EL2/EL1 normalization sequence is implemented under ADR-0011 and proven through
 both live firmware entry paths. Owned translation activation, higher-half
 transfer, and identity removal are also implemented and proven through both
 routes. The fixed architecture-neutral C++ boundary is also implemented and
-proven; later kernel initialization remains.
+proven. The first platform-selected, allocation-free console output is also
+implemented and proven through both firmware routes; later kernel
+initialization remains.
 
 Later decisions include the syscall ABI, kernel object model, scheduler policy,
 VFS semantics, libc strategy, service model, package format, graphics stack, and

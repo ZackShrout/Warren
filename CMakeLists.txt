@@ -56,6 +56,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/plans/burrow-loader.md
     docs/plans/burrow-first-entry.md
     docs/plans/aarch64-normalized-entry.md
+    docs/plans/pl011-console.md
     docs/plans/phase-0-contracts.md
     docs/adr/0000-template.md
     docs/adr/0001-reference-target.md
@@ -78,11 +79,15 @@ add_custom_target(WarrenPlanning SOURCES
     docs/specifications/AARCH64_LOADER_HANDOFF.md
     docs/specifications/AARCH64_NORMALIZED_ENTRY.md
     docs/specifications/BOOT_INFORMATION_V1.md
+    docs/specifications/PL011_CONSOLE.md
     docs/specifications/TEST_RESULT_PROTOCOL_V1.md
     boot/Platform/QemuVirt/PostExitTestResult.s
     kernel/linker/AArch64/burrow.ld
     kernel/include/burrow/Core/TransitionPlan.h
     kernel/include/burrow/Core/KernelEntry.h
+    kernel/include/burrow/Drivers/Console.h
+    kernel/include/burrow/Drivers/Pl011.h
+    kernel/include/burrow/Platform/QemuVirt/Console.h
     kernel/src/Arch/AArch64/EmergencyVectors.S
     kernel/src/Arch/AArch64/Entry.S
     kernel/src/Arch/AArch64/Normalization.S
@@ -94,6 +99,10 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/src/Core/ImageLayout.cpp
     kernel/src/Core/KernelEntry.cpp
     kernel/src/Core/TransitionPlan.cpp
+    kernel/src/Drivers/Console.cpp
+    kernel/src/Drivers/Pl011.cpp
+    kernel/src/Platform/QemuVirt/Console.cpp
+    kernel/src/Platform/QemuVirt/KernelEntry.cpp
     kernel/src/Platform/QemuVirt/TestResult.S
     third_party/README.md
     third_party/edk2/LICENSE
@@ -117,6 +126,9 @@ add_custom_target(WarrenPlanning SOURCES
     tests/host/TransitionPlanTests.cpp
     tests/host/AArch64PageTableTests.cpp
     tests/host/KernelEntryTests.cpp
+    tests/host/ConsoleTests.cpp
+    tests/host/Pl011Tests.cpp
+    tests/host/QemuVirtConsoleTests.cpp
     tests/abi/KernelEntryAbiCheck.c
     tests/abi/KernelEntryAbiCheck.cpp
     tests/host/WarrenTestProtocolTests.py
@@ -342,11 +354,76 @@ if(NOT CMAKE_CROSSCOMPILING)
         -Werror
     )
 
+    add_library(WarrenConsole OBJECT
+        kernel/include/burrow/Drivers/Console.h
+        kernel/src/Drivers/Console.cpp
+    )
+    target_include_directories(WarrenConsole PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+    )
+    target_compile_options(WarrenConsole PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_library(WarrenPl011 OBJECT
+        kernel/include/burrow/Drivers/Pl011.h
+        kernel/src/Drivers/Pl011.cpp
+    )
+    target_include_directories(WarrenPl011 PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+    )
+    target_compile_options(WarrenPl011 PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_library(WarrenQemuVirtConsole OBJECT
+        kernel/include/burrow/Platform/QemuVirt/Console.h
+        kernel/src/Platform/QemuVirt/Console.cpp
+    )
+    target_include_directories(WarrenQemuVirtConsole PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include"
+    )
+    target_compile_options(WarrenQemuVirtConsole PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
     add_executable(WarrenKernelEntryTests
         tests/host/KernelEntryTests.cpp
     )
     target_link_libraries(WarrenKernelEntryTests PRIVATE
         WarrenKernelEntry
+        WarrenConsole
         WarrenBootProtocol
     )
     target_compile_options(WarrenKernelEntryTests PRIVATE
@@ -359,6 +436,61 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(
         NAME WarrenKernelEntry
         COMMAND WarrenKernelEntryTests
+    )
+
+    add_executable(WarrenConsoleTests
+        tests/host/ConsoleTests.cpp
+    )
+    target_link_libraries(WarrenConsoleTests PRIVATE
+        WarrenConsole
+    )
+    target_compile_options(WarrenConsoleTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenConsole
+        COMMAND WarrenConsoleTests
+    )
+
+    add_executable(WarrenPl011Tests
+        tests/host/Pl011Tests.cpp
+    )
+    target_link_libraries(WarrenPl011Tests PRIVATE
+        WarrenPl011
+    )
+    target_compile_options(WarrenPl011Tests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenPl011
+        COMMAND WarrenPl011Tests
+    )
+
+    add_executable(WarrenQemuVirtConsoleTests
+        tests/host/QemuVirtConsoleTests.cpp
+    )
+    target_link_libraries(WarrenQemuVirtConsoleTests PRIVATE
+        WarrenQemuVirtConsole
+        WarrenPl011
+    )
+    target_compile_options(WarrenQemuVirtConsoleTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenQemuVirtConsole
+        COMMAND WarrenQemuVirtConsoleTests
     )
 
     add_executable(WarrenBootInformationProducerTests
@@ -590,6 +722,10 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         kernel/src/Core/ImageLayout.cpp
         kernel/src/Core/KernelEntry.cpp
         kernel/src/Core/TransitionPlan.cpp
+        kernel/src/Drivers/Console.cpp
+        kernel/src/Drivers/Pl011.cpp
+        kernel/src/Platform/QemuVirt/Console.cpp
+        kernel/src/Platform/QemuVirt/KernelEntry.cpp
         sdk/src/boot/BootInformationValidation.cpp
     )
     add_dependencies(BurrowImageObjects WarrenKernelEntryAbiCheck)

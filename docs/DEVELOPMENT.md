@@ -115,6 +115,11 @@ exercises the profile-selection logic, independent malformed loader fixtures,
 handoff storage and finalization, the artifact verifier, ESP input failures,
 the boot-information ABI, the serial classifier, and toolchain gates.
 
+Before the normalized assembly observation, both live routes must also emit
+`BURROW_CONSOLE:driver=pl011:mode=polling:output=ready`. Architecture-neutral
+Core writes that line through the platform-selected, allocation-free PL011
+driver after complete boot-object revalidation and identity removal.
+
 The combined system build explicitly enables the test-only QEMU transport in
 its Burrow child. Focused `aarch64-debug` and `aarch64-release` products leave
 that option off, and their artifact verification rejects the semihosting trap,
@@ -289,7 +294,8 @@ precedence are fixed in `specifications/TEST_RESULT_PROTOCOL_V1.md`. The current
 combined proof uses the two-channel `aarch64-normalized-entry` contract after
 UEFI boot services have ended. It proves normalized EL1, owned higher-half
 state, identity removal, and the first Core C++ witness; it is not an ordinary
-shutdown facility.
+shutdown facility. It also requires the first reusable console diagnostic from
+that C++ path.
 
 ### Interactive tests
 

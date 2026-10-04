@@ -46,7 +46,7 @@ These values and names are stable diagnostic and test vocabulary:
 | 6 | `activated` | Owned TTBRs, MAIR, TCR, SCTLR, and TLB state are active |
 | 7 | `higher-half` | PC, VBAR, SP, and every retained virtual reference use owned upper mappings |
 | 8 | `identity-removed` | TTBR0 names the empty root and the final EL1 invalidation sequence is complete |
-| 9 | `kernel-cpp` | `burrow_kernel_entry` returned the exact witness result |
+| 9 | `kernel-cpp` | `burrow_kernel_entry` emitted the reusable-console diagnostic and returned the exact witness result |
 
 The stage is advanced only after the condition in the table is observable. A
 terminal exception reports the last completed value; it does not claim the
@@ -289,10 +289,19 @@ The C-compatible `KernelEntryContext` is 64 bytes and eight-byte aligned:
 
 `x0` points to this immutable higher-half context, `x1` through `x7` are zero,
 SP is 16-byte aligned, DAIF remains masked, and FP/SIMD is unavailable. The
-extern-C function includes only Core-owned context and boot-information
-validation declarations. It revalidates the aliased complete object, validates
-all context invariants, writes its retained witness, and returns the exact
-`uint32_t` value `0x57415231`. Any other return is C++ context failure.
+extern-C function uses only the fixed Core-owned context at its assembly ABI.
+It asks Core to revalidate the aliased complete object and all context
+invariants, then asks QEMU-virt platform code to consume the validated console
+record and construct the allocation-free PL011 writer. Core emits:
+
+```text
+BURROW_CONSOLE:driver=pl011:mode=polling:output=ready
+```
+
+Core writes its retained witness only after that complete line succeeds and
+returns the exact `uint32_t` value `0x57415231`. Any other return is C++ context
+or console-publication failure. The exact reusable-console contract is in
+`PL011_CONSOLE.md`.
 
 Only after that value is checked may the architecture continuation emit:
 
@@ -348,12 +357,14 @@ Debug and Release verification must locate and check, from the linked objects:
   ordinary image.
 
 Host tests independently exercise the validator consumer, arena planner, table
-walker, activation preflight, context ABI, and generic entry witness. Live tests
+walker, activation preflight, context ABI, generic entry witness, byte-writer,
+PL011 driver, and QEMU-virt selection. Live tests
 cover both initial exception levels, emergency faults at inherited EL1/EL2, a
 common-EL1 fault before table activation, every assigned failure from 75
 through 81, and stable-vector faults for both guards, text-write, data-execute,
 and stale-identity probes. Stable protection probes require the exact stage-8
-ESR class and, for both guards, the exact fault address.
+ESR class and, for both guards, the exact fault address. Both successful routes
+also require the exact reusable-console diagnostic before normalized success.
 
 ## 13. Architecture References
 
