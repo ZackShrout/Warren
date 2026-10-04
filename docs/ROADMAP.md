@@ -79,13 +79,19 @@ The runway is reassessed after every merge.
    and EL2 targets run the pinned system profile paused behind a loopback-only
    GDB stub. The completed plan is in
    [`plans/symbolized-debug-workflow.md`](plans/symbolized-debug-workflow.md).
+10. **Complete — `codex/physical-memory-inventory`: normalize allocator-owned
+    memory.** Burrow now derives a bounded, provenance-preserving inventory
+    from the validated usable map, subtracts physical page zero and the complete
+    transition arena, reserves its first aligned four-page physical extent, and
+    proves the result on both live entry routes. The completed plan is in
+    [`plans/physical-memory-inventory.md`](plans/physical-memory-inventory.md).
 
 The completed `foundation/phase-0-contracts`, `feature/burrow-image`,
 `feature/burrow-loader`, `feature/burrow-first-entry`,
 `feature/aarch64-normalized-entry`, `feature/pl011-console`,
 `feature/aarch64-exception-reporting`, `codex/aarch64-generic-timer`,
 `codex/diagnostic-monitor`, `codex/panic-assertion-paths`, and
-`codex/symbolized-debug-workflow` plans
+`codex/symbolized-debug-workflow`, and `codex/physical-memory-inventory` plans
 remain available in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md),
 [`plans/burrow-image.md`](plans/burrow-image.md),
 [`plans/burrow-loader.md`](plans/burrow-loader.md),
@@ -96,19 +102,21 @@ remain available in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md),
 [`plans/aarch64-generic-timer.md`](plans/aarch64-generic-timer.md),
 [`plans/diagnostic-monitor.md`](plans/diagnostic-monitor.md),
 [`plans/panic-assertion-paths.md`](plans/panic-assertion-paths.md), and
-[`plans/symbolized-debug-workflow.md`](plans/symbolized-debug-workflow.md).
+[`plans/symbolized-debug-workflow.md`](plans/symbolized-debug-workflow.md), and
+[`plans/physical-memory-inventory.md`](plans/physical-memory-inventory.md).
 The implemented subordinate contracts are in
 [`specifications/AARCH64_BURROW_IMAGE.md`](specifications/AARCH64_BURROW_IMAGE.md),
 [`specifications/AARCH64_NORMALIZED_ENTRY.md`](specifications/AARCH64_NORMALIZED_ENTRY.md),
 [`specifications/AARCH64_LOADER_HANDOFF.md`](specifications/AARCH64_LOADER_HANDOFF.md),
 [`specifications/BOOT_INFORMATION_V1.md`](specifications/BOOT_INFORMATION_V1.md),
+[`specifications/PHYSICAL_MEMORY.md`](specifications/PHYSICAL_MEMORY.md),
 [`specifications/PL011_CONSOLE.md`](specifications/PL011_CONSOLE.md),
 and
 [`specifications/TEST_RESULT_PROTOCOL_V1.md`](specifications/TEST_RESULT_PROTOCOL_V1.md).
 
-The next likely slice begins Phase 2 with the normalized physical-memory
-inventory and a bounded boot allocator, building on the accepted boot map and
-reserved transition arena without introducing a general heap.
+The next likely slice extends Phase 2 with explicit page-frame ownership and
+reserved-region tracking, building on the retained inventory and boot
+allocation without introducing the kernel heap early.
 
 ## Phase 0 — Foundation
 
@@ -224,13 +232,15 @@ Not included: heap, processes, filesystem, graphics, physical hardware.
 
 ## Phase 2 — Burrow Core
 
+**Status:** Active
+
 **Objective:** Establish trustworthy ownership of memory and interrupt-driven
 kernel execution.
 
 Capabilities:
 
-- normalized physical memory map;
-- boot allocator and physical page-frame allocator;
+- normalized physical memory inventory and bounded boot allocator (complete);
+- physical page-frame allocator;
 - kernel page tables with permission and guard-page tests;
 - explicit MMIO mappings;
 - kernel heap with misuse diagnostics;

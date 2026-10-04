@@ -84,16 +84,25 @@ namespace burrow::core {
         const drivers::console_writer_t& console,
         volatile uint64_t* writable_witness) noexcept
     {
+        if (!publish_kernel_entry_readiness(console)) return 0;
+        return retain_kernel_entry_witness(writable_witness);
+    }
+
+    bool publish_kernel_entry_readiness(
+        const drivers::console_writer_t& console) noexcept
+    {
+        return drivers::write_console(
+                   console,
+                   k_console_ready_message,
+                   sizeof(k_console_ready_message) - 1) ==
+            drivers::console_write_error_t::success;
+    }
+
+    uint32_t retain_kernel_entry_witness(
+        volatile uint64_t* writable_witness) noexcept
+    {
         if (writable_witness == nullptr ||
             (reinterpret_cast<uintptr_t>(writable_witness) & (alignof(uint64_t) - 1)) != 0)
-            return 0;
-
-        const drivers::console_write_error_t console_result{ drivers::write_console(
-            console,
-            k_console_ready_message,
-            sizeof(k_console_ready_message) - 1)
-        };
-        if (console_result != drivers::console_write_error_t::success)
             return 0;
 
         *writable_witness = k_kernel_entry_witness;

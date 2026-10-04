@@ -69,6 +69,12 @@ namespace burrow::core {
     [[nodiscard]] uint32_t publish_kernel_entry(
         const drivers::console_writer_t& console,
         volatile uint64_t* writable_witness) noexcept;
+
+    [[nodiscard]] bool publish_kernel_entry_readiness(
+        const drivers::console_writer_t& console) noexcept;
+
+    [[nodiscard]] uint32_t retain_kernel_entry_witness(
+        volatile uint64_t* writable_witness) noexcept;
 } // namespace burrow::core
 
 extern "C" uint32_t burrow_kernel_entry(

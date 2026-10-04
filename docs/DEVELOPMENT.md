@@ -117,6 +117,7 @@ the boot-information ABI, the serial classifier, and toolchain gates.
 
 Before the normalized assembly observation, both live routes must also emit
 `BURROW_CONSOLE:driver=pl011:mode=polling:output=ready` and
+`BURROW_MEMORY_V1:extents=...:arena_pages=128:...:boot_pages=4:...`, then
 `BURROW_TIMER:source=cntp:interrupt=30:ticks=1:frequency=...`, followed by the
 ordered `BURROW_MONITOR` ready, status, and exit records.
 Architecture-neutral Core writes the first line through the platform-selected,
@@ -124,6 +125,10 @@ allocation-free PL011 driver after complete boot-object revalidation and
 identity removal. The architecture continuation writes the timer record only
 after one physical-timer IRQ has returned through the complete stable frame,
 then runs the bounded monitor through the same device's receive path.
+Between console readiness and the retained witness, Core derives the fixed-
+capacity usable inventory, excludes page zero and the transition arena, and
+reserves the lowest four-page-aligned four-page extent. The returned address is
+an ownership reservation only and is not dereferenced.
 
 The combined system build explicitly enables the test-only QEMU transport in
 its Burrow child. Focused `aarch64-debug` and `aarch64-release` products leave
@@ -139,6 +144,8 @@ reached the common physical EL1 state and requires stage 3, ESR `0xF2000779`,
 EL1, and agreed `PANIC`/4.
 The `WarrenSystemRejects*` normalized-entry fixtures exercise every assigned
 failure code from 75 through 83 and forbid the corresponding later diagnostic.
+`WarrenSystemRejectsPhysicalMemory` specifically requires `FAIL`/81 before any
+`BURROW_MEMORY_V1` or normalized-success record.
 The lower/upper-stack-guard, text-write, data-execute, and stale-identity tests run
 after TTBR0 removal through the stable EL1 vector table. They require exact
 stage-8 translation, write-permission, execute-permission, and level-0 stale-

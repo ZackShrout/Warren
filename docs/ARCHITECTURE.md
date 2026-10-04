@@ -1,7 +1,7 @@
 # Warren Architecture
 
-**Status:** Phase 0 and Phase 1 complete; First Light boots, reports, interacts,
-fails deterministically, and supports audited host-side symbolized debugging
+**Status:** Phase 0 and Phase 1 complete; Phase 2 active with a normalized
+physical-memory inventory and bounded boot allocator
 
 **Primary target:** AArch64, QEMU `virt-11.0`, little-endian, one virtual CPU
 
@@ -21,7 +21,9 @@ mapping. It constructs the fixed Core entry context, revalidates the aliased
 boot object in architecture-neutral C++, and retains the successful witness.
 QEMU-virt platform code selects the validated PL011 record and gives Core a
 bounded polling writer over the explicit stable MMIO alias. Core publishes the
-first reusable console diagnostic before the witness can succeed.
+first reusable console diagnostic, constructs its fixed-capacity physical-
+memory inventory, reserves the first aligned boot extent, and reports that
+state before the witness can succeed.
 Stable decisions are
 recorded in `docs/adr/`, and exact subordinate formats live in
 `docs/specifications/`.
@@ -271,8 +273,10 @@ specified together.
 
 Memory management grows through explicit ownership stages:
 
-1. **Boot allocator:** monotonic physical allocation with no freeing, usable
-   before the full memory map is normalized.
+1. **Normalized inventory and boot allocator (implemented):** a fixed-capacity,
+   provenance-preserving list of validated usable extents below the direct-map
+   ceiling, with page zero and the transition arena removed, plus monotonic
+   aligned physical allocation with no freeing.
 2. **Physical memory manager:** page-frame ownership and reserved-region
    tracking.
 3. **Kernel virtual memory:** controlled mappings, guard pages, permissions, and
@@ -293,6 +297,7 @@ eligible normal memory; MMIO is explicit; writable aliases of the Burrow image
 are forbidden. ADR-0016 owns the complete ranges and transition gates.
 Shared code speaks in distinct physical-address, virtual-address, byte-count,
 and page-count types to prevent unit confusion.
+The implemented contract is in `docs/specifications/PHYSICAL_MEMORY.md`.
 
 ## Execution And Scheduling: Staged Plan
 

@@ -59,6 +59,7 @@ set(_warren_aarch64_faults
     stale-identity
     identity-failure
     kernel-entry
+    physical-memory
     reported-breakpoint
     timer-initialization
     monitor
@@ -566,10 +567,14 @@ add_test(
         --initial-el el1
         --expected-test aarch64-normalized-entry
         --require-output "BURROW_CONSOLE:driver=pl011:mode=polling:output=ready"
+        --require-output "BURROW_MEMORY_V1:extents="
+        --require-output ":arena_pages=128:"
+        --require-output ":boot_pages=4:"
         --require-output "BURROW_TIMER:source=cntp:interrupt=30:ticks=1:frequency="
         --serial-input-after "BURROW_MONITOR:ready:"
         --serial-input-line status
         --serial-input-line exit
+        --require-output-in-order "BURROW_MEMORY_V1:extents="
         --require-output-in-order "BURROW_MONITOR:ready:commands=help,status,exit"
         --require-output-in-order "BURROW_MONITOR:status=ok:timer_ticks=1"
         --require-output-in-order "BURROW_MONITOR:exit=accepted"
@@ -588,10 +593,14 @@ add_test(
         --initial-el el2
         --expected-test aarch64-normalized-entry
         --require-output "BURROW_CONSOLE:driver=pl011:mode=polling:output=ready"
+        --require-output "BURROW_MEMORY_V1:extents="
+        --require-output ":arena_pages=128:"
+        --require-output ":boot_pages=4:"
         --require-output "BURROW_TIMER:source=cntp:interrupt=30:ticks=1:frequency="
         --serial-input-after "BURROW_MONITOR:ready:"
         --serial-input-line status
         --serial-input-line exit
+        --require-output-in-order "BURROW_MEMORY_V1:extents="
         --require-output-in-order "BURROW_MONITOR:ready:commands=help,status,exit"
         --require-output-in-order "BURROW_MONITOR:status=ok:timer_ticks=1"
         --require-output-in-order "BURROW_MONITOR:exit=accepted"
@@ -727,6 +736,12 @@ warren_add_aarch64_fault_test(
 warren_add_aarch64_fault_test(
     WarrenSystemRejectsKernelEntryWitness
     kernel-entry fail 81
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemRejectsPhysicalMemory
+    physical-memory fail 81
+    --forbid-output "BURROW_MEMORY_V1:"
     --forbid-output "BURROW_NORMALIZED_ENTRY:"
 )
 warren_add_aarch64_fault_test(

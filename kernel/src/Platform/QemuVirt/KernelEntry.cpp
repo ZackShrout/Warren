@@ -4,12 +4,17 @@
 //
 
 #include <burrow/Core/KernelEntry.h>
+#include <burrow/Core/PhysicalMemory.h>
 #include <burrow/Platform/QemuVirt/Console.h>
 
 #include <stdint.h>
 
 extern "C" [[gnu::visibility("hidden")]] [[gnu::used]] uint64_t
     burrow_kernel_entry_retained_witness{};
+extern "C" [[gnu::visibility("hidden")]] [[gnu::used]]
+    burrow::core::physical_memory_state_t burrow_physical_memory_state{};
+extern "C" [[gnu::visibility("hidden")]] [[gnu::used]]
+    burrow::core::boot_allocation_t burrow_boot_allocation{};
 
 extern "C" [[gnu::visibility("hidden")]] uint32_t burrow_kernel_entry(
     const burrow::core::KernelEntryContext* context) noexcept
@@ -35,8 +40,44 @@ extern "C" [[gnu::visibility("hidden")]] uint32_t burrow_kernel_entry(
         burrow::platform::qemu_virt::console_selection_error_t::success)
         return 0;
 
-    return burrow::core::publish_kernel_entry(
-        console,
+    burrow::core::validated_boot_information_t view{};
+    if (burrow::core::consume_boot_information(
+            boot_information,
+            context->boot_information_byte_count,
+            context->boot_information_physical_address,
+            view) != warren::boot::boot_information_error_t::success ||
+        burrow::core::initialize_physical_memory(
+            view,
+            { context->transition_arena_physical_address },
+            { context->transition_arena_page_count },
+            burrow_physical_memory_state) !=
+            burrow::core::physical_memory_error_t::success ||
+        burrow::core::allocate_boot_pages(
+            burrow_physical_memory_state,
+            { 4 },
+            { 4 },
+            burrow_boot_allocation) !=
+            burrow::core::physical_memory_error_t::success)
+        return 0;
+
+#if defined(WARREN_AARCH64_FAULT_INJECT_PHYSICAL_MEMORY)
+    asm volatile(
+        "mov w15, #0xf11b\n"
+        "mov w0, wzr"
+        :
+        :
+        : "x0", "x15");
+    return 0;
+#endif
+
+    if (!burrow::core::publish_kernel_entry_readiness(console) ||
+        burrow::core::report_physical_memory(
+            burrow_physical_memory_state,
+            burrow_boot_allocation,
+            console) != burrow::core::physical_memory_error_t::success)
+        return 0;
+
+    return burrow::core::retain_kernel_entry_witness(
         reinterpret_cast<volatile uint64_t*>(
             static_cast<uintptr_t>(context->retained_witness_address)));
 }
