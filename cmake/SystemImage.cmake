@@ -52,6 +52,7 @@ set(_warren_aarch64_faults
     identity-failure
     kernel-entry
     reported-breakpoint
+    timer-initialization
 )
 set(_warren_uefi_build "${_warren_product_root}/uefi")
 set(_warren_uefi_first_entry_fault_build "${_warren_product_root}/uefi-first-entry-fault")
@@ -499,6 +500,7 @@ add_test(
         --initial-el el1
         --expected-test aarch64-normalized-entry
         --require-output "BURROW_CONSOLE:driver=pl011:mode=polling:output=ready"
+        --require-output "BURROW_TIMER:source=cntp:interrupt=30:ticks=1:frequency="
         --require-output "BURROW_NORMALIZED_ENTRY:initial=EL1:normalized=EL1:tables=owned:identity=removed:cpp=arrived"
 )
 set_tests_properties(WarrenSystemAArch64NormalizedEntryEl1 PROPERTIES TIMEOUT 40)
@@ -514,6 +516,7 @@ add_test(
         --initial-el el2
         --expected-test aarch64-normalized-entry
         --require-output "BURROW_CONSOLE:driver=pl011:mode=polling:output=ready"
+        --require-output "BURROW_TIMER:source=cntp:interrupt=30:ticks=1:frequency="
         --require-output "BURROW_NORMALIZED_ENTRY:initial=EL2:normalized=EL1:tables=owned:identity=removed:cpp=arrived"
 )
 set_tests_properties(WarrenSystemAArch64NormalizedEntryEl2 PROPERTIES TIMEOUT 40)
@@ -654,6 +657,12 @@ warren_add_aarch64_fault_test(
     --require-output "BURROW_EXCEPTION_V1:stage=9:vector=4:el=1:esr=0x00000000F200077A:"
     --require-output ":x15=0x000000000000F116:"
     --require-output ":x30=0x"
+    --forbid-output "BURROW_NORMALIZED_ENTRY:"
+)
+warren_add_aarch64_fault_test(
+    WarrenSystemRejectsTimerInitialization
+    timer-initialization fail 82
+    --forbid-output "BURROW_TIMER:"
     --forbid-output "BURROW_NORMALIZED_ENTRY:"
 )
 

@@ -557,6 +557,18 @@ namespace burrow::core {
                                 transition_memory_type_t::device,
                                 k_transition_permission_read | k_transition_permission_write, 0);
         if (result != transition_plan_error_t::success) return result;
+        result = append_mapping(candidate, k_reference_gic_distributor_physical_address,
+                                k_reference_gic_distributor_virtual_address,
+                                k_reference_gic_distributor_page_count,
+                                transition_memory_type_t::device,
+                                k_transition_permission_read | k_transition_permission_write, 0);
+        if (result != transition_plan_error_t::success) return result;
+        result = append_mapping(candidate, k_reference_gic_redistributor_physical_address,
+                                k_reference_gic_redistributor_virtual_address,
+                                k_reference_gic_redistributor_page_count,
+                                transition_memory_type_t::device,
+                                k_transition_permission_read | k_transition_permission_write, 0);
+        if (result != transition_plan_error_t::success) return result;
         result = append_mapping(candidate, candidate.early_stack_physical_start.value,
                                 k_early_stack_virtual_start, k_transition_stack_page_count,
                                 transition_memory_type_t::normal,

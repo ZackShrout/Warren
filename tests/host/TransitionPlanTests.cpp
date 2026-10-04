@@ -223,7 +223,7 @@ namespace
         transition_plan_t plan{};
         passed &= expect_plan_result("reference plan", view, make_image_layout(),
                                      transition_plan_error_t::success, &plan);
-        passed &= expect_u64("reference mapping count", plan.mapping_count, 14);
+        passed &= expect_u64("reference mapping count", plan.mapping_count, 16);
         passed &= expect_u64("arena start", plan.arena_physical_start.value, k_usable_physical);
         passed &= expect_u64("arena pages", plan.arena_page_count.value, 128);
         passed &= expect_u64("empty root", plan.empty_root_physical_address.value, k_usable_physical);
@@ -245,7 +245,11 @@ namespace
                              burrow::core::k_kernel_virtual_bias);
         passed &= expect_u64("console device type", static_cast<uint32_t>(plan.mappings[12].memory_type),
                              static_cast<uint32_t>(burrow::core::transition_memory_type_t::device));
-        passed &= expect_u64("owned stack virtual", plan.mappings[13].virtual_start.value,
+        passed &= expect_u64("GIC distributor virtual", plan.mappings[13].virtual_start.value,
+                             burrow::core::k_reference_gic_distributor_virtual_address);
+        passed &= expect_u64("GIC redistributor virtual", plan.mappings[14].virtual_start.value,
+                             burrow::core::k_reference_gic_redistributor_virtual_address);
+        passed &= expect_u64("owned stack virtual", plan.mappings[15].virtual_start.value,
                              burrow::core::k_early_stack_virtual_start);
         passed &= expect_fixture_equal("consumer and planner preserve protocol object",
                                        fixture,

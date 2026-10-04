@@ -11,6 +11,7 @@
 .equ ACTIVATION_FAILURE,           79
 .equ IDENTITY_REMOVAL_FAILURE,     80
 .equ KERNEL_ENTRY_FAILURE,         81
+.equ TIMER_FAILURE,                82
 
 .section .text.burrow_aarch64_activation, "ax", %progbits
 .p2align 2
@@ -271,6 +272,27 @@ burrow_aarch64_activate_translation:
     mov x1, #9
     str x1, [x0]
 
+    bl burrow_qemu_virt_start_timer
+#if defined(WARREN_AARCH64_FAULT_INJECT_TIMER_INITIALIZATION)
+    mov w15, #0xf117
+    mov w0, #1
+#endif
+    cbnz w0, .Ltimer_failure
+
+    msr DAIFClr, #2
+    sevl
+.Ltimer_wait:
+    wfe
+    adrp x0, burrow_qemu_virt_timer_ticks
+    add x0, x0, :lo12:burrow_qemu_virt_timer_ticks
+    ldr x1, [x0]
+    cbz x1, .Ltimer_wait
+    msr DAIFSet, #2
+    cmp x1, #1
+    b.ne .Ltimer_failure
+    bl burrow_qemu_virt_publish_timer_tick
+    cbnz w0, .Ltimer_failure
+
 #if defined(WARREN_AARCH64_FAULT_INJECT_REPORTED_BREAKPOINT)
     mov w15, #0xf116
     brk #0x77a
@@ -312,6 +334,16 @@ burrow_aarch64_activate_translation:
 .Lkernel_entry_failure:
     mov sp, x22
     mov w0, #KERNEL_ENTRY_FAILURE
+#if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
+    b burrow_qemu_test_failure_stable
+#else
+    b .Lactivation_wait
+#endif
+
+.Ltimer_failure:
+    msr DAIFSet, #2
+    bl burrow_aarch64_disable_physical_timer
+    mov w0, #TIMER_FAILURE
 #if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
     b burrow_qemu_test_failure_stable
 #else

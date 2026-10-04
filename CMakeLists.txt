@@ -58,6 +58,7 @@ add_custom_target(WarrenPlanning SOURCES
     docs/plans/aarch64-normalized-entry.md
     docs/plans/pl011-console.md
     docs/plans/aarch64-exception-reporting.md
+    docs/plans/aarch64-generic-timer.md
     docs/plans/phase-0-contracts.md
     docs/adr/0000-template.md
     docs/adr/0001-reference-target.md
@@ -88,12 +89,16 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/include/burrow/Core/KernelEntry.h
     kernel/include/burrow/Arch/AArch64/ExceptionFrame.h
     kernel/include/burrow/Arch/AArch64/ExceptionReporting.h
+    kernel/include/burrow/Arch/AArch64/GenericTimer.h
     kernel/include/burrow/Drivers/Console.h
     kernel/include/burrow/Drivers/Pl011.h
     kernel/include/burrow/Platform/QemuVirt/Console.h
     kernel/src/Arch/AArch64/EmergencyVectors.S
     kernel/src/Arch/AArch64/StableVectors.S
     kernel/src/Arch/AArch64/ExceptionReporting.cpp
+    kernel/src/Arch/AArch64/GenericTimer.cpp
+    kernel/src/Arch/AArch64/GenericTimerRegisters.S
+    kernel/src/Arch/AArch64/GicV3CpuInterface.S
     kernel/src/Arch/AArch64/Entry.S
     kernel/src/Arch/AArch64/Normalization.S
     kernel/src/Arch/AArch64/Activation.S
@@ -108,6 +113,8 @@ add_custom_target(WarrenPlanning SOURCES
     kernel/src/Drivers/Pl011.cpp
     kernel/src/Platform/QemuVirt/Console.cpp
     kernel/src/Platform/QemuVirt/ExceptionReporting.cpp
+    kernel/include/burrow/Platform/QemuVirt/Timer.h
+    kernel/src/Platform/QemuVirt/Timer.cpp
     kernel/src/Platform/QemuVirt/KernelEntry.cpp
     kernel/src/Platform/QemuVirt/TestResult.S
     third_party/README.md
@@ -140,6 +147,7 @@ add_custom_target(WarrenPlanning SOURCES
     tests/abi/AArch64ExceptionFrameAbiCheck.c
     tests/abi/AArch64ExceptionFrameAbiCheck.cpp
     tests/host/AArch64ExceptionReportingTests.cpp
+    tests/host/AArch64GenericTimerTests.cpp
     tests/host/WarrenTestProtocolTests.py
     tests/host/UefiSmokeHarnessTests.py
 )
@@ -561,6 +569,46 @@ if(NOT CMAKE_CROSSCOMPILING)
         COMMAND WarrenAArch64ExceptionReportingTests
     )
 
+    add_library(WarrenAArch64GenericTimer OBJECT
+        kernel/include/burrow/Arch/AArch64/GenericTimer.h
+        kernel/src/Arch/AArch64/GenericTimer.cpp
+    )
+    target_include_directories(WarrenAArch64GenericTimer PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/kernel/include"
+    )
+    target_compile_options(WarrenAArch64GenericTimer PRIVATE
+        -ffreestanding
+        -fno-exceptions
+        -fno-rtti
+        -fno-stack-protector
+        -fno-threadsafe-statics
+        -fno-use-cxa-atexit
+        -nostdinc++
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_executable(WarrenAArch64GenericTimerTests
+        tests/host/AArch64GenericTimerTests.cpp
+    )
+    target_link_libraries(WarrenAArch64GenericTimerTests PRIVATE
+        WarrenAArch64GenericTimer
+        WarrenConsole
+    )
+    target_compile_options(WarrenAArch64GenericTimerTests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+
+    add_test(
+        NAME WarrenAArch64GenericTimer
+        COMMAND WarrenAArch64GenericTimerTests
+    )
+
     add_executable(WarrenBootInformationProducerTests
         tests/host/BootInformationProducerTests.cpp
     )
@@ -759,6 +807,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         identity-failure
         kernel-entry
         reported-breakpoint
+        timer-initialization
     )
 
     if(WARREN_ENABLE_QEMU_TEST_RESULT AND
@@ -768,7 +817,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         )
     endif()
     if(NOT WARREN_AARCH64_ENTRY_FAULT MATCHES
-       "^(none|emergency|common-el1-vector|unsupported-feature|common-el1|planning|tables|activation|lower-guard|upper-guard|text-write|data-execute|stale-identity|identity-failure|kernel-entry|reported-breakpoint)$")
+       "^(none|emergency|common-el1-vector|unsupported-feature|common-el1|planning|tables|activation|lower-guard|upper-guard|text-write|data-execute|stale-identity|identity-failure|kernel-entry|reported-breakpoint|timer-initialization)$")
         message(FATAL_ERROR
             "WARREN_AARCH64_ENTRY_FAULT has an unsupported value"
         )
@@ -785,6 +834,9 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         kernel/src/Arch/AArch64/EmergencyVectors.S
         kernel/src/Arch/AArch64/StableVectors.S
         kernel/src/Arch/AArch64/ExceptionReporting.cpp
+        kernel/src/Arch/AArch64/GenericTimer.cpp
+        kernel/src/Arch/AArch64/GenericTimerRegisters.S
+        kernel/src/Arch/AArch64/GicV3CpuInterface.S
         kernel/src/Arch/AArch64/Entry.S
         kernel/src/Arch/AArch64/Normalization.S
         kernel/src/Arch/AArch64/PageTables.cpp
@@ -797,6 +849,7 @@ if(WARREN_BUILD_ENVIRONMENT STREQUAL "burrow")
         kernel/src/Drivers/Pl011.cpp
         kernel/src/Platform/QemuVirt/Console.cpp
         kernel/src/Platform/QemuVirt/ExceptionReporting.cpp
+        kernel/src/Platform/QemuVirt/Timer.cpp
         kernel/src/Platform/QemuVirt/KernelEntry.cpp
         sdk/src/boot/BootInformationValidation.cpp
     )

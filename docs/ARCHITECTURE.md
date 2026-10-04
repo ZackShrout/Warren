@@ -117,7 +117,7 @@ Burrow at `EFI/WARREN/BURROW.ELF`. Only that combined image owns the current
 uses the test-only semihosting exit; the host requires both channels to agree.
 Dedicated pass, explicit-failure, and panic Burrow children prove the transport
 without adding it to the ordinary kernel image. Build-time-only Burrow children
-also prove exact failures 75–81 and take real stable-vector faults for both
+also prove exact failures 75–82 and take real stable-vector faults for both
 stack guards, text writes, data execution, and removed identity aliases.
 Separate UEFI fault fixtures prove Burrow rejects finalized header and console
 corruption and prove the loader's post-exit failure containment without
@@ -155,10 +155,12 @@ the fixed header prefix and PL011 record, records the observed EL and handoff
 state, then continues through normalized EL1, owned translation, higher-half
 transfer, identity removal, and architecture-neutral C++. The inherited
 terminal reporter captures EL1/EL2 architectural state without a stack. After
-the owned stack and stable EL1 table are active, the stable reporter preserves
-all 31 GPRs, SP, and syndrome state in a fixed frame and emits the versioned
-record through reusable console code. Both paths are non-returning; neither is
-an exception dispatcher.
+the owned stack and stable EL1 table are active, the stable entry preserves all
+31 GPRs, SP, and syndrome state in a fixed frame. Synchronous exceptions and
+unhandled IRQs emit the versioned record through reusable console code and are
+terminal. The one handled case is CPU 0 physical-timer PPI 30: QEMU-virt GICv3
+dispatch disables the one-shot source, the assembly path restores the complete
+frame, and `ERET` resumes the interrupted code.
 
 ## Source Layout
 

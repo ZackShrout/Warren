@@ -116,9 +116,12 @@ handoff storage and finalization, the artifact verifier, ESP input failures,
 the boot-information ABI, the serial classifier, and toolchain gates.
 
 Before the normalized assembly observation, both live routes must also emit
-`BURROW_CONSOLE:driver=pl011:mode=polling:output=ready`. Architecture-neutral
-Core writes that line through the platform-selected, allocation-free PL011
-driver after complete boot-object revalidation and identity removal.
+`BURROW_CONSOLE:driver=pl011:mode=polling:output=ready` and
+`BURROW_TIMER:source=cntp:interrupt=30:ticks=1:frequency=...`.
+Architecture-neutral Core writes the first line through the platform-selected,
+allocation-free PL011 driver after complete boot-object revalidation and
+identity removal. The architecture continuation writes the second only after
+one physical-timer IRQ has returned through the complete stable frame.
 
 The combined system build explicitly enables the test-only QEMU transport in
 its Burrow child. Focused `aarch64-debug` and `aarch64-release` products leave
@@ -133,14 +136,16 @@ stage 2, ESR `0xF2000777`, the requested current EL, and agreed `PANIC`/4.
 reached the common physical EL1 state and requires stage 3, ESR `0xF2000779`,
 EL1, and agreed `PANIC`/4.
 The `WarrenSystemRejects*` normalized-entry fixtures exercise every assigned
-failure code from 75 through 81 and forbid the C++ arrival diagnostic. The
-lower/upper-stack-guard, text-write, data-execute, and stale-identity tests run
+failure code from 75 through 82 and forbid the corresponding later diagnostic.
+The lower/upper-stack-guard, text-write, data-execute, and stale-identity tests run
 after TTBR0 removal through the stable EL1 vector table. They require exact
 stage-8 translation, write-permission, execute-permission, and level-0 stale-
 alias syndromes respectively, plus agreed `PANIC`/4 terminal results.
 `WarrenSystemReportsCompleteExceptionFrame` injects `BRK #0x77a` after the
 kernel-C++ witness, then requires the versioned stage-9 report, exact syndrome,
 preserved x15 fixture sentinel, x30 field, and agreed `PANIC`/4.
+`WarrenSystemRejectsTimerInitialization` injects the post-C++ timer failure,
+requires `FAIL`/82, and forbids both timer and normalized-success diagnostics.
 `WarrenSystemQemuResultFailure` requires an agreed `FAIL`/64 result, while
 `WarrenSystemQemuResultPanic` requires an agreed
 `PANIC`/2 result through the same QEMU harness used by the successful boot.

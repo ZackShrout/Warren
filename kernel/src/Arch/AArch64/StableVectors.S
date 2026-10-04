@@ -76,13 +76,6 @@ burrow_aarch64_stable_exception:
     str x30, [sp, #0x100]
 
     msr DAIFSet, #0xf
-    adrp x16, burrow_aarch64_emergency_state
-    add x16, x16, :lo12:burrow_aarch64_emergency_state
-    ldr x17, [x16, #EMERGENCY_ACTIVE]
-    cbnz x17, .Lstable_nested_wait
-    mov x17, #1
-    str x17, [x16, #EMERGENCY_ACTIVE]
-
     mov w1, #FRAME_ABI_MAJOR
     str w1, [sp, #0x000]
     mov w1, #FRAME_SIZE
@@ -108,12 +101,49 @@ burrow_aarch64_stable_exception:
     mrs x1, SPSR_EL1
     str x1, [sp, #FRAME_SPSR]
 
+    cmp w0, #5
+    b.eq .Lstable_irq
+
+.Lstable_terminal_exception:
+    adrp x16, burrow_aarch64_emergency_state
+    add x16, x16, :lo12:burrow_aarch64_emergency_state
+    ldr x17, [x16, #EMERGENCY_ACTIVE]
+    cbnz x17, .Lstable_nested_wait
+    mov x17, #1
+    str x17, [x16, #EMERGENCY_ACTIVE]
+
     mov x0, sp
     bl burrow_aarch64_report_exception
     cbz x0, .Lstable_terminal_wait
 #if defined(WARREN_ENABLE_QEMU_TEST_RESULT)
     b burrow_qemu_test_exception
 #endif
+    b .Lstable_terminal_wait
+
+.Lstable_irq:
+    mov x0, sp
+    bl burrow_aarch64_dispatch_irq
+    cbz w0, .Lstable_terminal_exception
+    sev
+
+    ldr x30, [sp, #0x100]
+    ldp x28, x29, [sp, #0x0f0]
+    ldp x26, x27, [sp, #0x0e0]
+    ldp x24, x25, [sp, #0x0d0]
+    ldp x22, x23, [sp, #0x0c0]
+    ldp x20, x21, [sp, #0x0b0]
+    ldp x18, x19, [sp, #0x0a0]
+    ldp x16, x17, [sp, #0x090]
+    ldp x14, x15, [sp, #0x080]
+    ldp x12, x13, [sp, #0x070]
+    ldp x10, x11, [sp, #0x060]
+    ldp x8, x9, [sp, #0x050]
+    ldp x6, x7, [sp, #0x040]
+    ldp x4, x5, [sp, #0x030]
+    ldp x2, x3, [sp, #0x020]
+    ldp x0, x1, [sp, #FRAME_REGISTERS]
+    add sp, sp, #FRAME_SIZE
+    eret
 
 .Lstable_terminal_wait:
     msr DAIFSet, #0xf

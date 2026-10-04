@@ -56,16 +56,20 @@ builds and independently audits the fixed-capacity table hierarchy. It then
 preflights the live mappings, activates the owned EL1 translation registers,
 branches to the stable image alias, installs the stable vectors and guarded
 stack, rebases retained resources, and replaces TTBR0 with the empty root before
-entering a masked wait. The inherited terminal reporter captures either EL1 or
-EL2 architectural exception state without using the stack. The owned stable
-EL1 table instead preserves the complete fixed exception frame and calls the
-bounded C++ formatter through the stable PL011 alias. The image imports no
+starting the one-shot physical timer. The inherited terminal reporter captures
+either EL1 or EL2 architectural exception state without using the stack. The
+owned stable EL1 table instead preserves the complete fixed exception frame and calls the
+bounded C++ formatter through the stable PL011 alias. Stable vector 5 may
+instead dispatch CPU 0 PPI 30, restore the complete frame, and return with
+`ERET`; other stable exceptions remain terminal. The image imports no
 runtime. Its architecture continuation constructs the fixed
 Core context, makes the one `burrow_kernel_entry` call, checks the exact witness
 result, and only then emits normalized success. That C++ entry revalidates the
 complete aliased object, selects the QEMU-virt PL011 through platform code, and
 emits the allocation-free `BURROW_CONSOLE` diagnostic before publishing the
-witness.
+witness. The continuation then configures the fixed GICv3 aliases, arms the
+non-secure physical timer for one 100 Hz interval, waits for exactly one IRQ,
+and emits `BURROW_TIMER` before normalized success.
 
 ## 3. Load Image
 
@@ -328,7 +332,7 @@ is one of `pass`, `fail`, or `panic`; each mode chooses one exact terminal line
 and matching status block. The transport object lives under
 `kernel/src/Platform/QemuVirt` and is not compiled into ordinary Burrow.
 The same test object owns a bounded dynamic failure entry for witness codes
-65–81 and a dedicated architectural-exception entry for common `PANIC` code 4.
+65–82 and a dedicated architectural-exception entry for common `PANIC` code 4.
 The failure entry accepts only the allocated range and uses the QEMU-virt PL011
 base rather than trusting a rejected console record. The exception entry is
 reached only after the production reporter emits its architectural record. Both
