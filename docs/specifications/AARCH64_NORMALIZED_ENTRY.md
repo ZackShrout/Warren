@@ -216,7 +216,7 @@ The arena has this immutable ownership:
 | 1–16 | 64 KiB owned early-stack backing |
 | 17–127 | At most 111 active page-table pages, including initial TTBR roots |
 
-The fixed mapping plan has capacity 16. It records physical start, virtual
+The fixed mapping plan has capacity 18. It records physical start, virtual
 start, page count, memory type, read/write/execute permissions, and whether the
 range is a temporary identity alias. Checked arithmetic rejects every rounded
 end, bias, direct-map conversion, and page-count overflow. Exact-fit arena and
@@ -237,6 +237,12 @@ physical aperture `0x0000000009000000`. The planner still obtains and validates
 the physical address from boot information and rejects a different aperture in
 the reference profile; architecture-neutral code never embeds either value.
 
+The QEMU-virt GICv3 distributor maps physical `0x08000000` through
+`0xFFFFC00008000000` for 16 pages. CPU 0's redistributor maps physical
+`0x080A0000` through `0xFFFFC000080A0000` for 32 pages, covering its RD and
+SGI/PPI frames. These stable aliases are reference-platform policy and are
+required by activation preflight before identity removal.
+
 ## 8. Table Descriptors And Required Mappings
 
 Every table and page descriptor has AF set, nG clear, DBM clear, contiguous
@@ -251,7 +257,7 @@ execute while no descendant is executable at EL0. Leaf policy is:
 | Image writable data | 0 | EL1 read-write | Inner | 1 | 1 |
 | Boot information | 0 | EL1 read-only | Inner | 1 | 1 |
 | Arena and stack backing | 0 | EL1 read-write | Inner | 1 | 1 |
-| PL011 | 1 | EL1 read-write | Outer | 1 | 1 |
+| PL011 and GICv3 MMIO | 1 | EL1 read-write | Outer | 1 | 1 |
 
 The TTBR0 hierarchy contains only temporary page mappings for executing image
 pages, the bootstrap stack pages still in use, the complete boot-information
@@ -260,8 +266,9 @@ aliases use the same permissions as their stable aliases. Gaps between image
 segments remain unmapped.
 
 TTBR1 maps image pages at ELF virtual address plus `0xFFFFFFFF80000000`, boot
-information and the arena at `0xFFFF800000000000 + physical`, PL011 at the fixed
-MMIO address above, and the 16 stack pages in the dynamic range. It does not map
+information and the arena at `0xFFFF800000000000 + physical`, PL011 and the
+two GICv3 ranges at their fixed MMIO addresses above, and the 16 stack pages in
+the dynamic range. It does not map
 the Burrow image through the direct map or include unrelated usable memory.
 
 The builder maps 4 KiB pages conservatively, rejects a valid descriptor at an
@@ -351,6 +358,7 @@ exceptions use common `PANIC` code 4:
 | 79 | Table activation or higher-half transfer proof |
 | 80 | Identity removal or surviving low reference |
 | 81 | C++ entry context or witness result |
+| 82 | GICv3, physical-timer, handled-IRQ, or timer diagnostic proof |
 
 The authoritative QEMU machine arguments are exactly:
 
@@ -386,12 +394,16 @@ PL011 driver, QEMU-virt selection, complete exception formatting, and the
 exception-frame ABI. Live tests
 cover both initial exception levels, emergency faults at inherited EL1/EL2, a
 common-EL1 fault before table activation, every assigned failure from 75
-through 81, and stable-vector faults for both guards, text-write, data-execute,
+through 82, and stable-vector faults for both guards, text-write, data-execute,
 and stale-identity probes. Stable protection probes require the exact stage-8
 ESR class and, for both guards, the exact fault address. A post-C++ breakpoint
 requires stage 9, the exact BRK syndrome, its preserved x15 sentinel, x30, and
 `PANIC`/4. Both successful routes also require the exact reusable-console
-diagnostic before normalized success.
+diagnostic and one
+`BURROW_TIMER:source=cntp:interrupt=30:ticks=1:frequency=...` record before
+normalized success. The timer is a 100 Hz one-shot; only current-EL SPx IRQ
+vector 5 and interrupt ID 30 return. All other stable vectors and unhandled
+IRQs remain terminal.
 
 ## 13. Architecture References
 

@@ -8,6 +8,7 @@
 #include <warren/boot/BootInformation.h>
 #include <warren/boot/BootInformationValidation.h>
 
+#include <stddef.h>
 #include <stdint.h>
 
 namespace burrow::core {
@@ -15,7 +16,7 @@ namespace burrow::core {
     constexpr uint64_t k_transition_arena_page_count{ 128 };
     constexpr uint64_t k_transition_stack_page_count{ 16 };
     constexpr uint64_t k_transition_table_page_count{ 111 };
-    constexpr uint32_t k_transition_mapping_capacity{ 16 };
+    constexpr uint32_t k_transition_mapping_capacity{ 18 };
     constexpr uint32_t k_transition_image_segment_capacity{ 5 };
 
     constexpr uint64_t k_direct_map_virtual_bias{ UINT64_C(0xffff800000000000) };
@@ -28,6 +29,20 @@ namespace burrow::core {
     constexpr uint64_t k_kernel_image_relative_limit{ UINT64_C(0x80000000) };
     constexpr uint64_t k_reference_pl011_physical_address{ UINT64_C(0x09000000) };
     constexpr uint64_t k_reference_pl011_virtual_address{ UINT64_C(0xffffc00009000000) };
+    constexpr uint64_t k_reference_gic_distributor_physical_address{
+        UINT64_C(0x08000000)
+    };
+    constexpr uint64_t k_reference_gic_distributor_virtual_address{
+        UINT64_C(0xffffc00008000000)
+    };
+    constexpr uint64_t k_reference_gic_distributor_page_count{ 16 };
+    constexpr uint64_t k_reference_gic_redistributor_physical_address{
+        UINT64_C(0x080a0000)
+    };
+    constexpr uint64_t k_reference_gic_redistributor_virtual_address{
+        UINT64_C(0xffffc000080a0000)
+    };
+    constexpr uint64_t k_reference_gic_redistributor_page_count{ 32 };
 
     struct physical_address_t
     {
@@ -151,3 +166,4 @@ static_assert(sizeof(burrow::core::byte_count_t) == 8);
 static_assert(sizeof(burrow::core::page_count_t) == 8);
 static_assert(sizeof(burrow::core::transition_mapping_t) == 40);
 static_assert(alignof(burrow::core::transition_mapping_t) == 8);
+static_assert(offsetof(burrow::core::transition_plan_t, page_table_page_count) == 0x308);

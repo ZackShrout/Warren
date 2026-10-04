@@ -16,6 +16,7 @@
 .equ SCTLR_EL1_DISABLED_BASELINE,    0x30d00800
 .equ HCR_EL2_AARCH64_EL1,            0x80000000
 .equ CNTHCTL_EL2_EL1_PHYSICAL_TIMER, 0x3
+.equ ICC_SRE_EL2_ENABLE_EL1,          0xf
 .equ SPSR_EL2_EL1H_MASKED,           0x3c5
 .equ NORMALIZATION_FAILURE,          76
 
@@ -68,6 +69,8 @@ burrow_aarch64_normalize:
     mov x0, #CNTHCTL_EL2_EL1_PHYSICAL_TIMER
     msr CNTHCTL_EL2, x0
     msr CNTVOFF_EL2, xzr
+    mov x0, #ICC_SRE_EL2_ENABLE_EL1
+    msr ICC_SRE_EL2, x0
 
     movz x0, #(SCTLR_EL1_DISABLED_BASELINE & 0xffff)
     movk x0, #((SCTLR_EL1_DISABLED_BASELINE >> 16) & 0xffff), lsl #16
@@ -146,7 +149,7 @@ burrow_aarch64_common_el1:
     mov w15, #0xf104
     adrp x2, burrow_aarch64_transition_plan
     add x2, x2, :lo12:burrow_aarch64_transition_plan
-    str xzr, [x2, #0x2b8]
+    str xzr, [x2, #0x308]
 #endif
     bl burrow_aarch64_build_transition_tables
     cbnz w0, .Lreport_normalization_failure

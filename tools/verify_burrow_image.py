@@ -163,6 +163,7 @@ AARCH64_FAULT_SENTINELS = {
     "stale-identity": "mov w15, #0xf114",
     "common-el1-vector": "mov w15, #0xf115",
     "reported-breakpoint": "mov w15, #0xf116",
+    "timer-initialization": "mov w15, #0xf117",
 }
 
 AARCH64_FAULT_OPERATIONS = {
@@ -170,7 +171,7 @@ AARCH64_FAULT_OPERATIONS = {
     "planning": "mov w0, #0x4d",
     "unsupported-feature": "mov x0, #0xf0000000",
     "common-el1": "mov w0, #0x4c",
-    "tables": "str xzr, [x2, #0x2b8]",
+    "tables": "str xzr, [x2, #0x308]",
     "activation": "mov w0, #0x4f",
     "identity-failure": "b ",
     "kernel-entry": "mov w0, wzr",
@@ -181,6 +182,7 @@ AARCH64_FAULT_OPERATIONS = {
     "stale-identity": "ldr x0, [x0]",
     "common-el1-vector": "brk #0x779",
     "reported-breakpoint": "brk #0x77a",
+    "timer-initialization": "mov w0, #0x1",
 }
 
 _FORBIDDEN_PROGRAM_TYPES = {
@@ -1591,6 +1593,25 @@ def verify_emergency_vectors_disassembly(
         "mrs x1, ELR_EL1",
         "mrs x1, FAR_EL1",
         "mrs x1, SPSR_EL1",
+        "burrow_aarch64_dispatch_irq",
+        "ldr x30, [sp, #0x100]",
+        "ldp x28, x29, [sp, #0xf0]",
+        "ldp x26, x27, [sp, #0xe0]",
+        "ldp x24, x25, [sp, #0xd0]",
+        "ldp x22, x23, [sp, #0xc0]",
+        "ldp x20, x21, [sp, #0xb0]",
+        "ldp x18, x19, [sp, #0xa0]",
+        "ldp x16, x17, [sp, #0x90]",
+        "ldp x14, x15, [sp, #0x80]",
+        "ldp x12, x13, [sp, #0x70]",
+        "ldp x10, x11, [sp, #0x60]",
+        "ldp x8, x9, [sp, #0x50]",
+        "ldp x6, x7, [sp, #0x40]",
+        "ldp x4, x5, [sp, #0x30]",
+        "ldp x2, x3, [sp, #0x20]",
+        "ldp x0, x1, [sp, #0x10]",
+        "add sp, sp, #0x140",
+        "eret",
         "burrow_aarch64_report_exception",
     ):
         if fragment not in stable_reporter:
@@ -1955,6 +1976,11 @@ def verify_activation_disassembly(
         "mov sp, x22",
         "mov x1, #0x9",
         "str x1, [x0]",
+        "burrow_qemu_virt_start_timer",
+        "msr DAIFClr, #0x2",
+        "sevl",
+        "wfe",
+        "burrow_qemu_virt_publish_timer_tick",
     ):
         while cursor < len(instructions) and fragment not in instructions[cursor]:
             cursor += 1
@@ -1980,7 +2006,7 @@ def verify_activation_disassembly(
     ]
     expected = 1 if qemu_test_result is not None else 0
     if len(result_branches) != expected or len(low_failure_branches) != expected or \
-            len(stable_failure_branches) != 2 * expected:
+            len(stable_failure_branches) != 3 * expected:
         raise VerificationError("activation has an unexpected QEMU transport branch")
 
     boundary_begin = next(
@@ -2092,7 +2118,7 @@ def verify_qemu_result_disassembly(
 
     for fragment in (
         "cmp w0, #0x41",
-        "cmp w0, #0x51",
+        "cmp w0, #0x52",
         "mov x24, #0x9000000",
         "udiv w7, w19, w6",
         "msub w8, w7, w6, w19",

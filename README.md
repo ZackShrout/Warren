@@ -35,7 +35,10 @@ complete line succeeds, and accepts only the exact success return. The owned
 stable EL1 vectors now preserve all 31 GPRs, interrupted SP, transition stage,
 and syndrome state in a fixed 320-byte ABI frame, emit a versioned bounded
 exception record through the reusable PL011 path, and terminate without
-recursive recovery.
+recursive recovery. After the C++ witness succeeds, CPU 0 configures the
+QEMU-virt GICv3 and non-secure physical timer, receives exactly one PPI 30
+interrupt through that same complete frame, restores every GPR, returns with
+`ERET`, masks further IRQ delivery, and emits a bounded `BURROW_TIMER` proof.
 
 ## Project Vocabulary
 
@@ -129,10 +132,11 @@ validates the final boot-information object, exits boot services, and transfers
 through the reviewed AArch64 boundary; Burrow then validates the directly
 observable entry state and reports the terminal result. The system-only Burrow
 children contain the QEMU result transport. Both live profiles must also emit
-the reusable `BURROW_CONSOLE` diagnostic from C++ and the matching
+the reusable `BURROW_CONSOLE` diagnostic from C++, the one-shot
+`BURROW_TIMER` diagnostic after a handled IRQ, and the matching
 `BURROW_NORMALIZED_ENTRY` diagnostic after C++ returns. Separate
 target fixtures prove matching pass, explicit-failure, and panic serial/process
-results, every normalized failure allocation from 75 through 81, both stack
+results, every normalized failure allocation from 75 through 82, both stack
 guards, text-write and data-execute protection, and stale-identity removal.
 UEFI fault fixtures prove rejection of malformed finalized handoff data and
 loader-side post-exit containment. Focused Burrow products do not contain that

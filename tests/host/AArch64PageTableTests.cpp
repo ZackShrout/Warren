@@ -121,6 +121,14 @@ namespace
         append_mapping(plan, burrow::core::k_reference_pl011_physical_address,
                        burrow::core::k_reference_pl011_virtual_address, 1,
                        transition_memory_type_t::device, k_read_write, 0);
+        append_mapping(plan, burrow::core::k_reference_gic_distributor_physical_address,
+                       burrow::core::k_reference_gic_distributor_virtual_address,
+                       burrow::core::k_reference_gic_distributor_page_count,
+                       transition_memory_type_t::device, k_read_write, 0);
+        append_mapping(plan, burrow::core::k_reference_gic_redistributor_physical_address,
+                       burrow::core::k_reference_gic_redistributor_virtual_address,
+                       burrow::core::k_reference_gic_redistributor_page_count,
+                       transition_memory_type_t::device, k_read_write, 0);
         append_mapping(plan, k_arena_physical + 0x1000,
                        burrow::core::k_early_stack_virtual_start,
                        burrow::core::k_transition_stack_page_count,
@@ -179,6 +187,8 @@ namespace
             { burrow::core::k_direct_map_virtual_bias + k_boot_physical },
             { burrow::core::k_direct_map_virtual_bias + k_arena_physical },
             { burrow::core::k_reference_pl011_virtual_address },
+            { burrow::core::k_reference_gic_distributor_virtual_address },
+            { burrow::core::k_reference_gic_redistributor_virtual_address },
         };
     }
 
@@ -246,8 +256,16 @@ namespace
             fixture, burrow::core::k_kernel_virtual_bias + 0x1000) };
         uint64_t* device{ leaf_entry(
             fixture, burrow::core::k_reference_pl011_virtual_address) };
+        uint64_t* gic_distributor{ leaf_entry(
+            fixture, burrow::core::k_reference_gic_distributor_virtual_address) };
+        uint64_t* gic_redistributor{ leaf_entry(
+            fixture, burrow::core::k_reference_gic_redistributor_virtual_address) };
         passed &= expect_u64("text leaf present", text != nullptr, 1);
         passed &= expect_u64("device leaf present", device != nullptr, 1);
+        passed &= expect_u64("GIC distributor leaf present",
+                             gic_distributor != nullptr, 1);
+        passed &= expect_u64("GIC redistributor leaf present",
+                             gic_redistributor != nullptr, 1);
         if (text != nullptr)
         {
             constexpr uint64_t expected{
@@ -427,7 +445,7 @@ namespace
         fixture_t exhausted{};
         initialize(exhausted);
         append_mapping(exhausted.plan, UINT64_C(0x10000000),
-                       UINT64_C(0xfffff00000000000), 45057,
+                       UINT64_C(0xfffff00000000000), 44545,
                        transition_memory_type_t::normal, k_read, 0);
         passed &= expect_error(
             "table capacity exhaustion",
@@ -439,7 +457,7 @@ namespace
         fixture_t exact_capacity{};
         initialize(exact_capacity);
         append_mapping(exact_capacity.plan, UINT64_C(0x10000000),
-                       UINT64_C(0xfffff00000000000), 45056,
+                       UINT64_C(0xfffff00000000000), 44544,
                        transition_memory_type_t::normal, k_read, 0);
         passed &= expect_error(
             "table capacity exact fit",
@@ -597,6 +615,25 @@ namespace
                 k_feature_40_bit, fixture.plan, fixture.storage,
                 fixture.configuration, wrong_vector),
             activation_preflight_error_t::missing_stable_vectors);
+
+        activation_preflight_t wrong_gicd{ make_preflight() };
+        wrong_gicd.gic_distributor_virtual_address.value += 4096;
+        passed &= expect_preflight_error(
+            "GIC distributor alias must be exact",
+            burrow::arch::aarch64::preflight_activation(
+                k_feature_40_bit, fixture.plan, fixture.storage,
+                fixture.configuration, wrong_gicd),
+            activation_preflight_error_t::invalid_runtime_state);
+
+        activation_preflight_t missing_gicr{ make_preflight() };
+        missing_gicr.gic_redistributor_virtual_address.value =
+            burrow::core::k_reference_gic_distributor_virtual_address;
+        passed &= expect_preflight_error(
+            "GIC redistributor alias must be mapped",
+            burrow::arch::aarch64::preflight_activation(
+                k_feature_40_bit, fixture.plan, fixture.storage,
+                fixture.configuration, missing_gicr),
+            activation_preflight_error_t::invalid_runtime_state);
 
         activation_preflight_t wrong_boot_alias{ make_preflight() };
         wrong_boot_alias.boot_information_virtual_address.value += 4096;

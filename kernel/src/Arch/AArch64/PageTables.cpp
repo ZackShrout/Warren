@@ -301,6 +301,16 @@ namespace burrow::arch::aarch64 {
                                   core::k_transition_mapping_temporary_identity) ||
                 !plan_has_mapping(plan, plan.console_physical_address.value,
                                   core::k_reference_pl011_virtual_address, 1,
+                                  core::transition_memory_type_t::device, read_write, 0) ||
+                !plan_has_mapping(plan,
+                                  core::k_reference_gic_distributor_physical_address,
+                                  core::k_reference_gic_distributor_virtual_address,
+                                  core::k_reference_gic_distributor_page_count,
+                                  core::transition_memory_type_t::device, read_write, 0) ||
+                !plan_has_mapping(plan,
+                                  core::k_reference_gic_redistributor_physical_address,
+                                  core::k_reference_gic_redistributor_virtual_address,
+                                  core::k_reference_gic_redistributor_page_count,
                                   core::transition_memory_type_t::device, read_write, 0))
                 return page_table_error_t::invalid_plan;
 
@@ -347,8 +357,34 @@ namespace burrow::arch::aarch64 {
                     return page_table_error_t::invalid_mapping_policy;
                 if (mapping.memory_type == core::transition_memory_type_t::device)
                 {
-                    if (mapping.physical_start.value != core::k_reference_pl011_physical_address ||
-                        mapping.page_count.value != 1 || mapping.permissions != read_write ||
+                    const bool reference_pl011{
+                        mapping.physical_start.value ==
+                            core::k_reference_pl011_physical_address &&
+                        mapping.page_count.value == 1 &&
+                        ((temporary && mapping.virtual_start.value ==
+                                           core::k_reference_pl011_physical_address) ||
+                         (!temporary && mapping.virtual_start.value ==
+                                            core::k_reference_pl011_virtual_address))
+                    };
+                    const bool reference_gic_distributor{
+                        !temporary && mapping.physical_start.value ==
+                            core::k_reference_gic_distributor_physical_address &&
+                        mapping.virtual_start.value ==
+                            core::k_reference_gic_distributor_virtual_address &&
+                        mapping.page_count.value ==
+                            core::k_reference_gic_distributor_page_count
+                    };
+                    const bool reference_gic_redistributor{
+                        !temporary && mapping.physical_start.value ==
+                            core::k_reference_gic_redistributor_physical_address &&
+                        mapping.virtual_start.value ==
+                            core::k_reference_gic_redistributor_virtual_address &&
+                        mapping.page_count.value ==
+                            core::k_reference_gic_redistributor_page_count
+                    };
+                    if ((!reference_pl011 && !reference_gic_distributor &&
+                         !reference_gic_redistributor) ||
+                        mapping.permissions != read_write ||
                         (!temporary && (mapping.virtual_start.value < core::k_mmio_virtual_start ||
                                         virtual_end > k_mmio_virtual_end)))
                         return page_table_error_t::invalid_mapping_policy;
@@ -866,7 +902,11 @@ namespace burrow::arch::aarch64 {
             preflight.boot_information_virtual_address.value != expected_boot_virtual ||
             preflight.arena_virtual_address.value != expected_arena_virtual ||
             preflight.console_virtual_address.value !=
-                core::k_reference_pl011_virtual_address)
+                core::k_reference_pl011_virtual_address ||
+            preflight.gic_distributor_virtual_address.value !=
+                core::k_reference_gic_distributor_virtual_address ||
+            preflight.gic_redistributor_virtual_address.value !=
+                core::k_reference_gic_redistributor_virtual_address)
             return activation_preflight_error_t::invalid_runtime_state;
 
         constexpr uint32_t read{ core::k_transition_permission_read };
@@ -884,6 +924,24 @@ namespace burrow::arch::aarch64 {
             read_execute,
             activation_preflight_error_t::missing_current_program_counter)
         };
+        if (result != activation_preflight_error_t::success) return result;
+
+        result = require_leaf(
+            storage, configuration,
+            preflight.gic_distributor_virtual_address.value,
+            core::k_reference_gic_distributor_physical_address,
+            core::transition_memory_type_t::device,
+            read_write,
+            activation_preflight_error_t::missing_gic_distributor_alias);
+        if (result != activation_preflight_error_t::success) return result;
+
+        result = require_leaf(
+            storage, configuration,
+            preflight.gic_redistributor_virtual_address.value,
+            core::k_reference_gic_redistributor_physical_address,
+            core::transition_memory_type_t::device,
+            read_write,
+            activation_preflight_error_t::missing_gic_redistributor_alias);
         if (result != activation_preflight_error_t::success) return result;
 
         result = require_leaf(

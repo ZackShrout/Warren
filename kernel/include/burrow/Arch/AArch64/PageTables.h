@@ -49,6 +49,8 @@ namespace burrow::arch::aarch64 {
         core::virtual_address_t boot_information_virtual_address;
         core::virtual_address_t arena_virtual_address;
         core::virtual_address_t console_virtual_address;
+        core::virtual_address_t gic_distributor_virtual_address;
+        core::virtual_address_t gic_redistributor_virtual_address;
     };
 
     enum class page_table_error_t : uint32_t
@@ -91,6 +93,8 @@ namespace burrow::arch::aarch64 {
         missing_arena_alias = 12,
         missing_console_alias = 13,
         mapped_stack_guard = 14,
+        missing_gic_distributor_alias = 15,
+        missing_gic_redistributor_alias = 16,
     };
 
     [[nodiscard]] page_table_error_t build_page_tables(
@@ -115,5 +119,5 @@ namespace burrow::arch::aarch64 {
 
 static_assert(sizeof(burrow::arch::aarch64::translation_configuration_t) == 56);
 static_assert(alignof(burrow::arch::aarch64::translation_configuration_t) == 8);
-static_assert(sizeof(burrow::arch::aarch64::activation_preflight_t) == 88);
+static_assert(sizeof(burrow::arch::aarch64::activation_preflight_t) == 104);
 static_assert(alignof(burrow::arch::aarch64::activation_preflight_t) == 8);

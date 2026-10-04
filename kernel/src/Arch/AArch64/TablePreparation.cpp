@@ -163,6 +163,8 @@ extern "C" {
             { burrow::core::k_direct_map_virtual_bias +
                 burrow_aarch64_transition_plan.arena_physical_start.value },
             { burrow::core::k_reference_pl011_virtual_address },
+            { burrow::core::k_reference_gic_distributor_virtual_address },
+            { burrow::core::k_reference_gic_redistributor_virtual_address },
         };
         const burrow::arch::aarch64::activation_preflight_error_t result{
             burrow::arch::aarch64::preflight_activation(
