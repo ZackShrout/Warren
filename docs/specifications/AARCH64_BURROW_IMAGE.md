@@ -60,7 +60,10 @@ entering a masked wait. The terminal reporter captures
 either EL1 or EL2 architectural exception state without using the stack. The
 image imports no runtime. Its architecture continuation constructs the fixed
 Core context, makes the one `burrow_kernel_entry` call, checks the exact witness
-result, and only then emits normalized success.
+result, and only then emits normalized success. That C++ entry revalidates the
+complete aliased object, selects the QEMU-virt PL011 through platform code, and
+emits the allocation-free `BURROW_CONSOLE` diagnostic before publishing the
+witness.
 
 ## 3. Load Image
 
@@ -309,8 +312,10 @@ same ESP through UEFI.
 
 The combined QEMU path emits `BEGIN:aarch64-normalized-entry`, the live loaded-image
 diagnostic, a direct post-`ExitBootServices()` loader line, Burrow's observed EL
-and boot-information address, the matching normalized-entry diagnostic after
-the Core witness, and `PASS:aarch64-normalized-entry`. Explicit
+and boot-information address, the C++
+`BURROW_CONSOLE:driver=pl011:mode=polling:output=ready` diagnostic, the matching
+normalized-entry diagnostic after the Core witness, and
+`PASS:aarch64-normalized-entry`. Explicit
 `virtualization=off` and `virtualization=on` routes prove inherited EL1 and EL2.
 Burrow then uses the exact test-only `SYS_EXIT_EXTENDED` operation with status
 zero. The host requires serial/process agreement.

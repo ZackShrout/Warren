@@ -44,25 +44,34 @@ The runway is reassessed after every merge.
    vectors, a guarded stack, an empty TTBR0, and the fixed-ABI
    architecture-neutral C++ witness. The completed plan is in
    [`plans/aarch64-normalized-entry.md`](plans/aarch64-normalized-entry.md).
+4. **Complete — `feature/pl011-console`: allocation-free diagnostic output.**
+   QEMU-virt platform code consumes the validated early-console record, selects
+   the explicit stable PL011 mapping, and gives Core a bounded, allocation-free
+   byte writer. Both EL1 and EL2 routes prove C++ emits the console-ready
+   diagnostic before publishing the retained entry witness. The completed plan
+   is in [`plans/pl011-console.md`](plans/pl011-console.md).
 
 The completed `foundation/phase-0-contracts`, `feature/burrow-image`,
-`feature/burrow-loader`, `feature/burrow-first-entry`, and
-`feature/aarch64-normalized-entry` plans remain available
+`feature/burrow-loader`, `feature/burrow-first-entry`,
+`feature/aarch64-normalized-entry`, and `feature/pl011-console` plans remain
+available
 in [`plans/phase-0-contracts.md`](plans/phase-0-contracts.md),
 [`plans/burrow-image.md`](plans/burrow-image.md),
-[`plans/burrow-loader.md`](plans/burrow-loader.md), and
-[`plans/burrow-first-entry.md`](plans/burrow-first-entry.md), and
-[`plans/aarch64-normalized-entry.md`](plans/aarch64-normalized-entry.md). The implemented
+[`plans/burrow-loader.md`](plans/burrow-loader.md),
+[`plans/burrow-first-entry.md`](plans/burrow-first-entry.md),
+[`plans/aarch64-normalized-entry.md`](plans/aarch64-normalized-entry.md), and
+[`plans/pl011-console.md`](plans/pl011-console.md). The implemented
 subordinate contracts are in
 [`specifications/AARCH64_BURROW_IMAGE.md`](specifications/AARCH64_BURROW_IMAGE.md),
 [`specifications/AARCH64_NORMALIZED_ENTRY.md`](specifications/AARCH64_NORMALIZED_ENTRY.md),
 [`specifications/AARCH64_LOADER_HANDOFF.md`](specifications/AARCH64_LOADER_HANDOFF.md),
 [`specifications/BOOT_INFORMATION_V1.md`](specifications/BOOT_INFORMATION_V1.md),
+[`specifications/PL011_CONSOLE.md`](specifications/PL011_CONSOLE.md),
 and
 [`specifications/TEST_RESULT_PROTOCOL_V1.md`](specifications/TEST_RESULT_PROTOCOL_V1.md).
 
-Likely later slices include the allocation-free PL011 console, complete exception
-reporting, and the ARM generic timer. Their exact branch boundaries will be
+Likely later slices include complete exception reporting and the ARM generic
+timer. Their exact branch boundaries will be
 chosen from the completed normalized-entry foundation.
 
 ## Phase 0 — Foundation
@@ -149,7 +158,9 @@ Completed Phase 1 evidence:
   loader post-exit containment, inherited and common/stable vector traps, every
   normalized-entry failure code from 75 through 81, both stack guards, image
   permissions, the removed identity alias, and isolated pass/fail/panic
-  transport, with test machinery excluded from ordinary images.
+  transport, with test machinery excluded from ordinary images; and
+- a platform-selected, allocation-free PL011 writer with bounded transmit
+  polling, host driver and failure tests, and live EL1/EL2 C++ output evidence.
 
 Exit demonstration:
 

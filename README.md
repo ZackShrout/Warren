@@ -29,7 +29,9 @@ activates the owned EL1 regime, branches to the stable image alias, installs the
 stable vectors and guarded stack, rebases retained resources, and replaces
 TTBR0 with an empty root. It then constructs the fixed 64-byte entry context,
 calls architecture-neutral kernel C++, revalidates the aliased boot object,
-writes the retained witness, and accepts only the exact success return.
+selects the validated QEMU-virt PL011 through platform code, emits a bounded
+allocation-free console diagnostic, writes the retained witness only after the
+complete line succeeds, and accepts only the exact success return.
 
 ## Project Vocabulary
 
@@ -71,6 +73,7 @@ trustworthy platform on which those things can eventually be built.
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural-decision-record policy and decision index
 - [`docs/specifications/AARCH64_BURROW_IMAGE.md`](docs/specifications/AARCH64_BURROW_IMAGE.md) — implemented Burrow ELF and packaging contract
 - [`docs/specifications/AARCH64_NORMALIZED_ENTRY.md`](docs/specifications/AARCH64_NORMALIZED_ENTRY.md) — implemented register, mapping, and generic-entry contract
+- [`docs/specifications/PL011_CONSOLE.md`](docs/specifications/PL011_CONSOLE.md) — implemented allocation-free console and PL011 driver contract
 - [`CODE_STANDARDS.md`](CODE_STANDARDS.md) — Warren-specific C++ and assembly standards
 
 ## Working Agreement
@@ -122,7 +125,8 @@ validates the final boot-information object, exits boot services, and transfers
 through the reviewed AArch64 boundary; Burrow then validates the directly
 observable entry state and reports the terminal result. The system-only Burrow
 children contain the QEMU result transport. Both live profiles must also emit
-the matching `BURROW_NORMALIZED_ENTRY` diagnostic after C++ returns. Separate
+the reusable `BURROW_CONSOLE` diagnostic from C++ and the matching
+`BURROW_NORMALIZED_ENTRY` diagnostic after C++ returns. Separate
 target fixtures prove matching pass, explicit-failure, and panic serial/process
 results, every normalized failure allocation from 75 through 81, both stack
 guards, text-write and data-execute protection, and stale-identity removal.
@@ -132,10 +136,11 @@ transport or any fault injection.
 
 Before final map capture, loader diagnostics use the UEFI console. After a
 successful exit, the loader and first-entry witness use minimal direct PL011
-output under the inherited firmware identity mapping. The normalized witness
-uses the checked upper MMIO alias after owned translation is active and every
-identity mapping has been removed. That one-way output is not the later
-reusable Burrow console. Semihosting exists
+output under the inherited firmware identity mapping. Those assembly paths are
+not reusable consoles. After owned translation is active and every identity
+mapping has been removed, platform C++ constructs the allocation-free PL011
+writer on the checked upper MMIO alias; the normalized assembly witness and
+test transport remain independent. Semihosting exists
 only in trusted QEMU test artifacts and is neither an ordinary shutdown path nor
 a physical-machine interface.
 

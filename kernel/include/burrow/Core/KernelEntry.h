@@ -5,6 +5,10 @@
 
 #pragma once
 
+#if defined(__cplusplus)
+#include <burrow/Drivers/Console.h>
+#endif
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -51,9 +55,19 @@ namespace burrow::core {
 
     using KernelEntryContext = ::burrow_kernel_entry_context_t;
 
-    [[nodiscard]] uint32_t validate_kernel_entry(
+    enum class kernel_entry_error_t : uint32_t
+    {
+        success = 0,
+        invalid_context = 1,
+        invalid_boot_information = 2,
+    };
+
+    [[nodiscard]] kernel_entry_error_t validate_kernel_entry(
         const KernelEntryContext& context,
-        const void* readable_boot_information,
+        const void* readable_boot_information) noexcept;
+
+    [[nodiscard]] uint32_t publish_kernel_entry(
+        const drivers::console_writer_t& console,
         volatile uint64_t* writable_witness) noexcept;
 } // namespace burrow::core
 

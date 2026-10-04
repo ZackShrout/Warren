@@ -497,6 +497,7 @@ add_test(
         --esp "${_warren_esp}"
         --initial-el el1
         --expected-test aarch64-normalized-entry
+        --require-output "BURROW_CONSOLE:driver=pl011:mode=polling:output=ready"
         --require-output "BURROW_NORMALIZED_ENTRY:initial=EL1:normalized=EL1:tables=owned:identity=removed:cpp=arrived"
 )
 set_tests_properties(WarrenSystemAArch64NormalizedEntryEl1 PROPERTIES TIMEOUT 40)
@@ -511,6 +512,7 @@ add_test(
         --esp "${_warren_esp}"
         --initial-el el2
         --expected-test aarch64-normalized-entry
+        --require-output "BURROW_CONSOLE:driver=pl011:mode=polling:output=ready"
         --require-output "BURROW_NORMALIZED_ENTRY:initial=EL2:normalized=EL1:tables=owned:identity=removed:cpp=arrived"
 )
 set_tests_properties(WarrenSystemAArch64NormalizedEntryEl2 PROPERTIES TIMEOUT 40)

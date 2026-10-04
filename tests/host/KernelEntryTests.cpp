@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 
 namespace
 {
@@ -28,6 +29,26 @@ namespace
     {
         alignas(8) uint8_t bytes[512]{};
     };
+
+    struct console_capture_t
+    {
+        char bytes[128]{};
+        uint32_t byte_count{};
+        uint32_t fail_at{ UINT32_MAX };
+    };
+
+    [[nodiscard]] bool capture_byte(void* context, uint8_t byte) noexcept
+    {
+        if (context == nullptr) return false;
+
+        auto& capture{ *static_cast<console_capture_t*>(context) };
+        if (capture.byte_count == capture.fail_at ||
+            capture.byte_count >= sizeof(capture.bytes) - 1)
+            return false;
+
+        capture.bytes[capture.byte_count++] = static_cast<char>(byte);
+        return true;
+    }
 
     [[nodiscard]] warren_boot_information_t& header(fixture_t& fixture) noexcept
     {
@@ -122,10 +143,15 @@ namespace
 
     [[nodiscard]] uint32_t enter(const burrow::core::KernelEntryContext& context,
                                  const fixture_t& fixture,
-                                 uint64_t& witness) noexcept
+                                 uint64_t& witness,
+                                 console_capture_t& capture) noexcept
     {
-        return burrow::core::validate_kernel_entry(
-            context, fixture.bytes, &witness);
+        if (burrow::core::validate_kernel_entry(context, fixture.bytes) !=
+            burrow::core::kernel_entry_error_t::success)
+            return 0;
+
+        const burrow::drivers::console_writer_t writer{ &capture, capture_byte };
+        return burrow::core::publish_kernel_entry(writer, &witness);
     }
 
     [[nodiscard]] bool expect_rejected(
@@ -134,27 +160,38 @@ namespace
         const fixture_t& fixture) noexcept
     {
         uint64_t witness{ UINT64_C(0x1122334455667788) };
-        const uint32_t result{ enter(context, fixture, witness) };
+        console_capture_t capture{};
+        const uint32_t result{ enter(context, fixture, witness, capture) };
         return expect_u64(name, result, 0) &&
             expect_u64("rejection preserves witness", witness,
-                       UINT64_C(0x1122334455667788));
+                       UINT64_C(0x1122334455667788)) &&
+            expect_u64("rejection preserves console", capture.byte_count, 0);
     }
 
     [[nodiscard]] bool run_success_tests() noexcept
     {
         fixture_t fixture{ make_fixture() };
         uint64_t witness{ 0 };
+        console_capture_t capture{};
         bool passed{ expect_u64(
             "EL1 context result",
-            enter(make_context(1), fixture, witness),
+            enter(make_context(1), fixture, witness, capture),
             burrow::core::k_kernel_entry_success) };
         passed &= expect_u64("EL1 retained witness", witness,
                              burrow::core::k_kernel_entry_witness);
+        passed &= expect_u64("EL1 console length", capture.byte_count,
+                             sizeof("BURROW_CONSOLE:driver=pl011:mode=polling:output=ready\r\n") - 1);
+        passed &= expect_u64(
+            "EL1 console content",
+            std::strcmp(capture.bytes,
+                        "BURROW_CONSOLE:driver=pl011:mode=polling:output=ready\r\n"),
+            0);
 
         witness = 0;
+        capture = {};
         passed &= expect_u64(
             "EL2 context result",
-            enter(make_context(2), fixture, witness),
+            enter(make_context(2), fixture, witness, capture),
             burrow::core::k_kernel_entry_success);
         passed &= expect_u64("EL2 retained witness", witness,
                              burrow::core::k_kernel_entry_witness);
@@ -217,11 +254,22 @@ namespace
         const burrow::core::KernelEntryContext context{ make_context() };
         passed &= expect_u64(
             "null readable object",
-            burrow::core::validate_kernel_entry(context, nullptr, &witness), 0);
+            static_cast<uint32_t>(burrow::core::validate_kernel_entry(context, nullptr)),
+            static_cast<uint32_t>(burrow::core::kernel_entry_error_t::invalid_context));
+        const burrow::drivers::console_writer_t invalid_writer{};
         passed &= expect_u64(
             "null writable witness",
-            burrow::core::validate_kernel_entry(context, invalid_object.bytes, nullptr), 0);
+            burrow::core::publish_kernel_entry(invalid_writer, nullptr), 0);
         passed &= expect_u64("null inputs preserve witness", witness,
+                             UINT64_C(0x8877665544332211));
+
+        console_capture_t capture{};
+        capture.fail_at = 8;
+        const burrow::drivers::console_writer_t writer{ &capture, capture_byte };
+        passed &= expect_u64(
+            "console failure result",
+            burrow::core::publish_kernel_entry(writer, &witness), 0);
+        passed &= expect_u64("console failure preserves witness", witness,
                              UINT64_C(0x8877665544332211));
         return passed;
     }
